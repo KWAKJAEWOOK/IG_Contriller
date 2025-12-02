@@ -50,6 +50,32 @@ typedef struct {
     char buffer[BUF_SIZE];
 } shm_ringbuf_t;
 
+/*
+	todo:
+	IG_Server_Manager에서 MESSAGEDATA를 기반으로 csv 파일과 대조 및 표출 우선순위 및 표출 내용을 계산,
+	M30, LED 제어를 위한 상태를 담는 구조체
+	M30_Manager, LED_Manager에선 이것만 보고 표출 패킷 뿌림 (현재 표출 내용과 변경이 있는 장치에만)
+*/
+typedef struct {
+    int MsgCount;	// 디버깅용, 원본 데이터의 MsgCount
+
+	int n_in_msg;	// 북쪽, 교차로 진입 방향 볼라드 그룹에 뿌릴 메시지 번호
+	int n_load_msg;	// 북쪽, 교차로 진입 방향 지주/가드레일 그룹에 뿌릴 메시지 번호
+	int n_out_msg;	// 북쪽, 교차로 진출 방향 볼라드 그룹에 뿌릴 메시지 번호
+
+	int e_in_msg;
+	int e_load_msg;
+	int e_out_msg;
+
+	int s_in_msg;
+	int s_load_msg;
+	int s_out_msg;
+
+	int w_in_msg;
+	int w_load_msg;
+	int w_out_msg;
+} VMS_COMMAND_DATA;
+
 typedef struct _system_set {
 	int 	master_id;
 
@@ -59,7 +85,7 @@ typedef struct _system_set {
 	int				led_port;
 
 	char			m30_n_in_ip[5][32];		// 북쪽 도로, 교차로 진입 방향 볼라드
-	char			m30_n_load_ip[5][32];	// 북쪽 도로, 교차로 진입 방향 볼라드
+	char			m30_n_load_ip[5][32];	// 북쪽 도로, 교차로 진입 방향 지주/가드레일
 	char			m30_n_out_ip[5][32];	// 북쪽 도로, 교차로 진출 방향 볼라드
 
 	char			m30_e_in_ip[5][32];		// 동
@@ -148,6 +174,7 @@ typedef struct {	// 전체 메시지 프레임
 enum {
 	SHMID_PROCESS_DATA = 0,
 	SHMID_SYSTEM_SET,
+	SHMID_COMMAND_SET,
 	SHMID_MESSAGEDATA,
 	SHMID_LISTINFO
 };
@@ -167,6 +194,7 @@ int 	mp_All_create();
 extern SHM_PROC_DATA				*proc_shm_ptr;
 extern SHM_SYSTEM_SET     			*system_set_ptr;
 
+extern VMS_COMMAND_DATA				*vms_command_ptr;
 extern MESSAGEDATA					*message_data_ptr;
 extern LISTINFO						*list_info_ptr;
 

@@ -14,9 +14,6 @@
 
 #define MAX_PATH_LEN 4096
 
-/* 전역 설정 포인터 (shm_func.c 등에 정의된 변수와 연결) */
-// extern SHM_SYSTEM_SET *system_set_ptr;
-
 void Generate_Group_IP(char (*ip_list)[32], int count) {	// 기준 IP(0번 인덱스)를 바탕으로 count 개수만큼 IP를 1씩 증가시켜 배열에 채움
     if (count <= 1) return; // 1개 이하면 생성안함
     int ip[4];
@@ -219,7 +216,6 @@ int main(int argc, char *argv[])
     // 1. 공유 메모리 생성 및 연결
     if (shm_all_create() == FALSE) { // create가 실패하면 이미 존재할 수 있으니 open 시도 or 로직 점검
         printf("START] shm_all_create() failed (Maybe already exists or Permission denied)\n");
-        // Linux에서는 create가 실패해도 attach를 시도해보는 것이 좋음, 여기선 원본 흐름 유지
     }
     
     if (shm_all_open() == FALSE) {

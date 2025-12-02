@@ -345,6 +345,7 @@ THANDLEINDEX CommInit(int nType, char *szHostName, short nPort, BOOL bDisplay)
    THANDLEINDEX HandleIndex;
    HandleIndex = CommOpen(nType, szHostName, nPort);
    if (HandleIndex != -1) CommInfoVector[HandleIndex].bDisplay = bDisplay;
+   // signal(SIGPIPE, SIG_IGN); // SIGPIPE 발생 시 프로그램 종료 방지
    return HandleIndex;
 }
 
