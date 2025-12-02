@@ -182,13 +182,18 @@ void *do_thread(void *data) {
 */
 // ============================ MAIN ============================
 int main() {
+    if (logger_init("Logs/LED_Manager_Log", 100) != 0) { // 테스트용 100mb
+        printf("Logger init failed\n");
+    }
+    logger_log(LOG_LEVEL_INFO, "LED Manager Start.");
+
     if (shm_all_open() == false) {
-        printf("LED_Mgr] shm_init failed\n");
+        logger_log(LOG_LEVEL_ERROR, "LED_Mgr] shm_init failed");
         exit(-1);
     }
 
     if (msg_all_open() == false) {
-        printf("LED_Mgr] msg_init failed\n");
+        logger_log(LOG_LEVEL_ERROR, "LED_Mgr] msg_init failed");
     }
 
     signal(SIGINT, handle_sigint);
@@ -200,14 +205,9 @@ int main() {
     // 스레드 생성
     pthread_t p_thread;
     if (pthread_create(&p_thread, NULL, do_thread, NULL) != 0) {
-        perror("Thread creation failed");
+        logger_log(LOG_LEVEL_ERROR, "Thread creation failed");
         exit(EXIT_FAILURE);
     }
-
-    if (logger_init("Logs/LED_Manager_Log", 100) != 0) { // 테스트용 100mb
-        printf("Logger init failed\n");
-    }
-    logger_log(LOG_LEVEL_INFO, "LED Manager Start.");
 
     nowtime = time(NULL);
 

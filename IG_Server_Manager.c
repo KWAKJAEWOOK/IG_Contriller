@@ -39,7 +39,21 @@ void handle_sigint(int sig) {
     // 필요 시 소켓 close 추가
     exit(0);
 }
+//=================== 공유메모리에 데이터 업데이트 관련 =======================
+void safe_strcpy(char* dest, cJSON* item, size_t max_len) {	// json 객체에서 문자열 복사할때 버퍼 오버플로우 방지 및 NULL 체크
+    if (cJSON_IsString(item) && (item->valuestring != NULL)) {
+        strncpy(dest, item->valuestring, max_len - 1);
+        dest[max_len - 1] = '\0';
+    } else {
+        dest[0] = '\0';
+    }
+}
 
+void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성하기
+	// todo. 한 메시지 프레임에서 각 ApproachTrafficInfo를 확인하고, PET_Threshold-PET 값과 HostObject의 객체 속도, 
+	// todo. HostObject의 진입/진출 방향과 RemoteObject의 진입 방향을 통해 scenario.CSV 파일과 대조하여 표출할 그룹과 메시지 번호 확인
+	// todo. 그룹별로 우선순위 높은 메시지 정보를 vms_command_ptr에 업데이트
+}
 //============================ TCP 연결 관리 =============================
 bool host_connect() {   // 클라이언트로써 연결 시도
 	if (bConnected) { return true; }
@@ -64,8 +78,119 @@ static uint8_t g_recv_buffer[MAX_RECV_BUFFER_SIZE];	// 글로벌 버퍼
 static size_t g_buffer_len = 0;
 
 static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 객체 파싱 및 공유메모리에 업데이트
-    const cJSON* MsgCount = cJSON_GetObjectItemCaseSensitive(json_root, "MsgCount");
-	// todo. 이후 내용 파싱 및 공유메모리 업데이트
+    const cJSON* json_MsgCount = cJSON_GetObjectItemCaseSensitive(json_root, "MsgCount");
+	if (cJSON_IsNumber(json_MsgCount)) { message_data_ptr->MsgCount; }
+	const cJSON* json_Timestamp = cJSON_GetObjectItemCaseSensitive(json_root, "Timestamp");
+    if (cJSON_IsString(json_Timestamp)) { strcpy(message_data_ptr->Timestamp, json_Timestamp->valuestring); }
+
+    cJSON* json_ApproachTrafficInfoList = cJSON_GetObjectItem(json_root, "ApproachTrafficInfoList");	// ApproachTrafficInfoList 배열 파싱
+    if (cJSON_IsArray(json_ApproachTrafficInfoList)) {
+        cJSON* json_ApproachTrafficInfo = NULL;
+		int traffic_info_index = 0;
+        cJSON_ArrayForEach(json_ApproachTrafficInfo, json_ApproachTrafficInfoList) {	// 각 ApproachTrafficInfo 순회하기
+            cJSON* json_conflictPos = cJSON_GetObjectItem(json_ApproachTrafficInfo, "ConflictPos");	// ConflictPos 객체 파싱
+            if (json_conflictPos && cJSON_IsObject(json_conflictPos)) {	// 상충경고가 있으면
+                const cJSON* json_Conflict_lat = cJSON_GetObjectItemCaseSensitive(json_conflictPos, "lat");
+				const cJSON* json_Conflict_lon = cJSON_GetObjectItemCaseSensitive(json_conflictPos, "lon");
+				const cJSON* json_PET = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "PET");
+				if (cJSON_IsNumber(json_Conflict_lat) && cJSON_IsNumber(json_Conflict_lon) && cJSON_IsNumber(json_PET)) {
+					message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lat = json_Conflict_lat->valuedouble;
+					message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lon = json_Conflict_lon->valuedouble;
+					message_data_ptr->ApproachTrafficInfo[traffic_info_index].PET = json_PET->valuedouble;
+				}
+            } else {	// 상충경고 없으면 다 -1로 채우자
+				message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lat = -1;
+				message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lon = -1;
+				message_data_ptr->ApproachTrafficInfo[traffic_info_index].PET = -1;
+			}
+			const cJSON* json_PET_Threshold = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "PET_Threshold");
+			if (cJSON_IsNumber(json_PET_Threshold)) {
+				message_data_ptr->ApproachTrafficInfo[traffic_info_index].PET_Threshold = json_PET_Threshold->valuedouble;
+			}
+
+			const cJSON* json_HostObject = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "HostObject");	// HO 파싱
+			if (cJSON_IsObject(json_HostObject)) {
+				const cJSON* json_HO_ObjectType = cJSON_GetObjectItemCaseSensitive(json_HostObject, "ObjectType");
+				const cJSON* json_HO_ObjectID = cJSON_GetObjectItemCaseSensitive(json_HostObject, "ObjectID");
+				if (cJSON_IsString(json_HO_ObjectType) && cJSON_IsString(json_HO_ObjectID)) {
+					safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectType, json_HO_ObjectType->valuestring
+						, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectType));
+					safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID, json_HO_ObjectID->valuestring
+						, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID));
+				}
+				/*
+				todo. 위치 이동 후 주석 제거, 아래꺼 삭제
+				const cJSON* json_HostObj_CVIBDirCode = cJSON_GetObjectItemCaseSensitive(json_HostObject, "CVIBDirCode");
+				if (cJSON_IsNumber(json_HostObj_CVIBDirCode)) {
+					message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.CVIBDirCode = json_HostObj_CVIBDirCode->valueint;
+				}
+				*/
+				const cJSON* json_HostObj_CVIBDirCode = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "CVIBDirCode");
+				if (cJSON_IsNumber(json_HostObj_CVIBDirCode)) {
+					message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.CVIBDirCode = json_HostObj_CVIBDirCode->valueint;
+				}
+
+				const cJSON* json_HO_WayPointList = cJSON_GetObjectItemCaseSensitive(json_HostObject, "WayPointList");
+				if (cJSON_IsArray(json_HO_WayPointList)) {
+					cJSON* json_WayPoint = NULL;
+					int wayPoint_index = 0;
+					cJSON_ArrayForEach(json_WayPoint, json_HO_WayPointList) {	// 각 WayPoint 순회하기
+						if (json_WayPoint){	// "WayPointList":[]처럼 빈 리스트일 수 있으니까
+							const cJSON* json_WayPoint_lat = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "lat");
+							const cJSON* json_WayPoint_lon = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "lon");
+							const cJSON* json_WayPoint_speed = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "speed");
+							if (cJSON_IsNumber(json_WayPoint_lat) && cJSON_IsNumber(json_WayPoint_lon) && cJSON_IsNumber(json_WayPoint_speed)) {
+								message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lat = json_WayPoint_lat->valuedouble;
+								message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lon = json_WayPoint_lon->valuedouble;
+								message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].speed = json_WayPoint_speed->valuedouble;
+							}
+						}
+						wayPoint_index++;
+					}
+					message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.Num_Of_HO_WayPoint = wayPoint_index;
+				}
+			}
+			const cJSON* json_RemoteObject = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "RemoteObject");	// RO 파싱
+			if (json_RemoteObject && cJSON_IsObject(json_RemoteObject)) {	// 얜 없을수도있음
+				const cJSON* json_RO_ObjectType = cJSON_GetObjectItemCaseSensitive(json_HostObject, "ObjectType");
+				const cJSON* json_RO_ObjectID = cJSON_GetObjectItemCaseSensitive(json_HostObject, "ObjectID");
+				if (cJSON_IsString(json_RO_ObjectType) && cJSON_IsString(json_RO_ObjectID)) {
+					safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectType, json_RO_ObjectType->valuestring
+						, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectType));
+					safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID, json_RO_ObjectID->valuestring
+						, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID));
+				}
+				/*
+				todo. 웨이즈원이 추가해주면 주석 제거하기
+				const cJSON* json_RemoteObj_CVIBDirCode = cJSON_GetObjectItemCaseSensitive(RemoteObject, "CVIBDirCode");
+				if (cJSON_IsNumber(json_RemoteObj_CVIBDirCode)) {
+					message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.CVIBDirCode = json_RemoteObj_CVIBDirCode->valueint;
+				}
+				*/
+				const cJSON* json_RO_WayPointList = cJSON_GetObjectItemCaseSensitive(json_RemoteObject, "WayPointList");
+				if (cJSON_IsArray(json_RO_WayPointList)) {
+					cJSON* json_WayPoint = NULL;
+					int wayPoint_index = 0;
+					cJSON_ArrayForEach(json_WayPoint, json_RO_WayPointList) {	// 각 WayPoint 순회하기
+						if (json_WayPoint){	// "WayPointList":[]처럼 빈 리스트일 수 있으니까
+							const cJSON* json_WayPoint_lat = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "lat");
+							const cJSON* json_WayPoint_lon = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "lon");
+							const cJSON* json_WayPoint_speed = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "speed");
+							if (cJSON_IsNumber(json_WayPoint_lat) && cJSON_IsNumber(json_WayPoint_lon) && cJSON_IsNumber(json_WayPoint_speed)) {
+								message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lat = json_WayPoint_lat->valuedouble;
+								message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lon = json_WayPoint_lon->valuedouble;
+								message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].speed = json_WayPoint_speed->valuedouble;
+							}
+						}
+						wayPoint_index++;
+					}
+					message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.Num_Of_RO_WayPoint = wayPoint_index;
+				}
+			}
+            traffic_info_index++;
+        }
+		message_data_ptr->Num_Of_ApproachTrafficInfo = traffic_info_index;
+    }
 }
 
 void append_to_global_buffer(uint8_t* new_data, size_t length) {	// 수신한 데이터를 글로벌 버퍼에 업로드
@@ -258,24 +383,29 @@ void *do_thread(void * data)	// 100ms 주기로 공유메모리 수신 / 송신
 		}
 	}
 }
-// ================================ 기능 구현 함수 ===============================
-// todo. 수신한 JSON 객체를 파싱하여 message_data_ptr에 저장해두는 함수
-// todo. 객체 별 교차로 진입 방향 및 진출 방향을 추정하고, 중요 내용들을 vms_command_ptr에 업데이트
 // ============================================================================
 int main()
 {
 	int i;
 	bool bReturn;
 
+	if (logger_init("Logs/IG_Server_Manager_Log", 100) != 0) {	// 로거 테스트용 100mb
+		logger_log(LOG_LEVEL_ERROR, "Logger init failed");
+        exit(EXIT_FAILURE);
+    }
+	// todo. IG-Server 수신 rawdata는 다른 경로에 따로 로깅 가능한지
+
+	logger_log(LOG_LEVEL_INFO, "IG-Server Manager Start.");
+
 	if (shm_all_open() == false)
 	{
-		logger_log(LOG_LEVEL_ERROR, "IG_Server] shm_init() failed\n");
+		logger_log(LOG_LEVEL_ERROR, "IG_Server] shm_init() failed");
 		exit(-1);
 	}
 
 	if (msg_all_open() == false)
 	{
-		logger_log(LOG_LEVEL_ERROR, "IG_Server] msg_all_open() failed\n");
+		logger_log(LOG_LEVEL_ERROR, "IG_Server] msg_all_open() failed");
 		exit(-1);
 	}
 
@@ -295,12 +425,6 @@ int main()
 		logger_log(LOG_LEVEL_ERROR, "Thread creation failed");
 		exit(EXIT_FAILURE);
 	}
-
-	if (logger_init("Logs/IG_Server_Manager_Log", 100) != 0) {	// 로거 테스트용 100mb
-		logger_log(LOG_LEVEL_ERROR, "Logger init failed");
-        exit(EXIT_FAILURE);
-    }
-	logger_log(LOG_LEVEL_INFO, "IG-Server Manager Start.");
 
 	bReturn = host_connect();	// IG-Server와 연결
 	logger_log(LOG_LEVEL_DEBUG, "IG_Server] 서버 리스닝 : %d", bReturn);

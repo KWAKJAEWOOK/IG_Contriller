@@ -250,22 +250,22 @@ const uint8_t packets[10][18] = {   // 밝기 조절 패킷 데이터
 // todo. vms_command_ptr 내부, 조도값 확인 및 알맞은 밝기 조절 패킷 전송 함수
 // ============================ MAIN ============================
 int main() {
+    if (logger_init("Logs/M30_Manager_Log", 100) != 0) {
+        printf("Logger init failed\n");
+    }
+
     if (shm_all_open() == false) {
-        printf("M30_Mgr] shm_init failed\n");
+        logger_log(LOG_LEVEL_ERROR,"M30_Mgr] shm_init failed");
         exit(-1);
     }
     if (msg_all_open() == false) {
-        printf("M30_Mgr] msg_init failed\n");
+        logger_log(LOG_LEVEL_ERROR,"M30_Mgr] msg_init failed");
     }
 
     signal(SIGINT, handle_sigint);
 
     proc_shm_ptr->pid[M30_MANAGER_PID] = getpid();
     proc_shm_ptr->status[M30_MANAGER_PID] = 'S';
-
-    if (logger_init("Logs/M30_Manager_Log", 100) != 0) {
-        printf("Logger init failed\n");
-    }
 
     // 장치 목록 초기화
     init_device_list();

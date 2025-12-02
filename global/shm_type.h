@@ -51,15 +51,15 @@ typedef struct {
 } shm_ringbuf_t;
 
 /*
-	todo:
 	IG_Server_Manager에서 MESSAGEDATA를 기반으로 csv 파일과 대조 및 표출 우선순위 및 표출 내용을 계산,
 	M30, LED 제어를 위한 상태를 담는 구조체
 	M30_Manager, LED_Manager에선 이것을 참고하여 표출 패킷을 뿌림 (현재 표출 내용과 변경이 있는 장치에만)
 */
 typedef struct {
     int MsgCount;	// 디버깅용, 원본 데이터의 MsgCount
+	char Timestamp[32];
 
-	int n_in_msg[3];	// 북쪽, 교차로 진입 방향 볼라드 그룹에 뿌릴 메시지 번호와, 상응하는 객체 속도, PET 값 (객체 속도나 PET 값이 없으면 -1로 저장함)
+	int n_in_msg[3];	// 북쪽, 교차로 진입 방향 볼라드 그룹에 뿌릴 메시지 번호와, 상응하는 객체 속도, (PET_Threshold-PET) 값 (객체 속도나 PET 값이 없으면 -1로 저장함)
 	int n_load_msg[3];	// 북쪽, 교차로 진입 방향 지주/가드레일 그룹에 뿌릴 메시지 번호와, 상응하는 객체 속도, PET 값
 	int n_out_msg[3];	// 북쪽, 교차로 진출 방향 볼라드 그룹에 뿌릴 메시지 번호와, 상응하는 객체 속도, PET 값
 
@@ -103,6 +103,11 @@ typedef struct {	// 소켓 통신 상태정보. true면 연결중, false면 연�
 typedef struct _system_set {
 	int 	master_id;
 
+	int				n_dir_code;				// 북쪽 도로의 방향 코드. (IG-Server에서 오는 CVIBDirCode 번호)
+	int				e_dir_code;
+	int				s_dir_code;
+	int				w_dir_code;
+
 	char			ig_server_ip[32];
 	int				ig_server_port;
 	char			led_ip[32];
@@ -133,65 +138,110 @@ typedef struct _system_set {
 
 } SHM_SYSTEM_SET;
 
-// IG-Server에서 빋은 교통 상태정보 업데이트용 공유메시지
-typedef struct {	// 리스트 내부 객체 개수 업데이트용
-	int ApproachTrafficInfo_count;	// ApproachTrafficInfoList 내부, 이번 프레임에 유효한 객체 개수
-	int HostObject_count;
-	int RemoteObject_count;
-	int HostObject_WayPoint_count;
-	int RemoteObject_WayPoint_count;
-} LISTINFO;
-
-typedef struct {	// waypoint 구조체
-	float lat;
-	float lon;
-	float elevation;
-	float timeOffset;
-	float speed;
-	float heading;
-} WAYPOINT;
-typedef struct {	// Host Object 구조체
-	char ObjectType[32];	// 객체 타입 (타입별 표기 TBD)
-	char ObjectID[32];		// 객체 식별자
-	bool IsDrivingIntentShared;	// 주행 의도 공유 여부 (0: 미공유, 1: 공유)
-	int IGIntersectionIntent;	// IG 통신메시지 정의서의 DE_IGIntersectionIntent(교차로 주행의도 유형) 사용 // todo. 무슨 의미인지 잘 모르겠음
-	int CVIBDirCode;	// 교차로 진입 방향정보 코드
-	WAYPOINT WayPointList[20];	// 주행 예측 궤적 리스트
-} HOSTOBJECT;
-typedef struct {	// Remote Object 구조체
-	char ObjectType[32];
-	char ObjectID[32];
-	bool IsDrivingIntentShared;
-	int IGIntersectionIntent;
-	// int CVIBDirCode;	// todo. 추가 예정
-	WAYPOINT WayPointList[20];
-} REMOTEOBJECT;
-typedef struct {	// ConflictPos 구조체
-	float lat;
-	float lon;
-	float elevation;
-} CONFLICTPOS;
-typedef struct {	// ApproachTrafficInfo 구조체
-	CONFLICTPOS ConflictPos;
-	float PET;
-	float PET_Threshold;
-	HOSTOBJECT HostObject[4];
-	REMOTEOBJECT RemoteObject[4];
-} APPROACHTRAFFICINFO;
-typedef struct {	// 전체 메시지 프레임
+//================================ IG-Server에서 빋은 교통 상태정보 업데이트용 공유메시지 ================================	// 이거 다 가지고 있을 필요 없을듯
+// typedef struct {	// 리스트 내부 객체 개수 업데이트용
+// 	int ApproachTrafficInfo_count;	// ApproachTrafficInfoList 내부, 이번 프레임에 유효한 객체 개수
+// 	// int HostObject_count;
+// 	int RemoteObject_count;
+// 	int HostObject_WayPoint_count;
+// 	int RemoteObject_WayPoint_count;
+// } LISTINFO;
+// //====== LISTINFO는 별개 =====
+// typedef struct {	// waypoint 구조체
+// 	float lat;
+// 	float lon;
+// 	float elevation;
+// 	float timeOffset;
+// 	float speed;
+// 	float heading;
+// } WAYPOINT;
+// typedef struct {	// Host Object 구조체
+// 	char ObjectType[32];	// 객체 타입 (타입별 표기 TBD)
+// 	char ObjectID[32];		// 객체 식별자
+// 	bool IsDrivingIntentShared;	// 주행 의도 공유 여부 (0: 미공유, 1: 공유)
+// 	int IGIntersectionIntent;	// IG 통신메시지 정의서의 DE_IGIntersectionIntent(교차로 주행의도 유형) 사용 // todo. 무슨 의미인지 잘 모르겠음
+// 	int CVIBDirCode;	// 교차로 진입 방향정보 코드
+// 	WAYPOINT WayPointList[20];	// 주행 예측 궤적 리스트
+// } HOSTOBJECT;
+// typedef struct {	// Remote Object 구조체
+// 	char ObjectType[32];
+// 	char ObjectID[32];
+// 	bool IsDrivingIntentShared;
+// 	int IGIntersectionIntent;
+// 	// int CVIBDirCode;	// todo. 추가 예정
+// 	WAYPOINT WayPointList[20];
+// } REMOTEOBJECT;
+// typedef struct {	// ConflictPos 구조체
+// 	float lat;
+// 	float lon;
+// 	// float elevation;	// 필요없을듯
+// } CONFLICTPOS;
+// typedef struct {	// ApproachTrafficInfo 구조체
+// 	CONFLICTPOS ConflictPos;
+// 	float PET;
+// 	float PET_Threshold;
+// 	HOSTOBJECT HostObject[4];
+// 	REMOTEOBJECT RemoteObject[4];
+// } APPROACHTRAFFICINFO;
+// typedef struct {	// 전체 메시지 프레임
+// 	int MsgCount;
+// 	char Timestamp[32];
+// 	APPROACHTRAFFICINFO ApproachTrafficInfoList[4];
+// } MESSAGEDATA;
+//=========================================================================================
+typedef struct {	// 간소화시킨 IG-Server 수신 메시지
 	int MsgCount;
 	char Timestamp[32];
-	APPROACHTRAFFICINFO ApproachTrafficInfoList[4];
+	int Num_Of_ApproachTrafficInfo;	// 이번 프레임에 유효한 ApproachTrafficInfo 개수
+	struct {
+		struct {	// ConflictPos
+			float lat;
+			float lon;
+			// float alt;	// 안씀
+		} ConflictPos;	// 없으면 다 -1
+		float PET;	// 없으면 다 -1
+		float PET_Threshold;
+		struct {	// HostObject
+			char ObjectType[32];
+			char ObjectID[32];
+			// bool IsDrivingIntentShared;
+			// int IGIntersectionIntent;
+			int CVIBDirCode;
+			int Num_Of_HO_WayPoint;	// 유효한 HO_WayPoint 개수
+			struct {
+				float lat;
+				float lon;
+				// float alt;	// 안씀
+				// float timeOffset;	// 안씀
+				float speed;
+				// float heading;	// 사실상 안들어옴
+			} WayPoint[20];	// 최대 20개
+		} HostObject;
+		struct {	// RemoteObject
+			char ObjectType[32];
+			char ObjectID[32];
+			// bool IsDrivingIntentShared;
+			// int IGIntersectionIntent;
+			// int CVIBDirCode;	// todo. 추가 요청 중
+			int Num_Of_RO_WayPoint;	// 유효한 RO_WayPoint 개수
+			struct {
+				float lat;
+				float lon;
+				// float alt;	// 안씀
+				// float timeOffset;	// 안씀
+				float speed;
+				// float heading;	// 사실상 안들어옴
+			} WayPoint[20];	// 최대 20개
+		} RemoteObject;
+	} ApproachTrafficInfo[4];
 } MESSAGEDATA;
-//==================================================
-
 // Shared Memory -------------------------------------------------
 #define SHM_MAX_COUNT			2
 #define SHM_KEY_PROCESS			10000
 #define SHM_KEY_SYSTEM_SET		10001
 
 #define SHM_KEY_MESSAGEDATA		10002
-#define SHM_KEY_LISTINFO		10003
+// #define SHM_KEY_LISTINFO		10003
 
 enum {
 	SHMID_PROCESS_DATA = 0,
@@ -199,7 +249,7 @@ enum {
 	SHMID_COMMAND_SET,
 	SHMID_CONNECTION_SET,
 	SHMID_MESSAGEDATA,
-	SHMID_LISTINFO
+	// SHMID_LISTINFO
 };
 
 int  	shm_create(key_t shm_key, long shm_size);
@@ -220,7 +270,7 @@ extern SHM_SYSTEM_SET     			*system_set_ptr;
 extern VMS_COMMAND_DATA				*vms_command_ptr;
 extern CONNECTION_STATUS			*connection_status_ptr;
 extern MESSAGEDATA					*message_data_ptr;
-extern LISTINFO						*list_info_ptr;
+// extern LISTINFO						*list_info_ptr;
 
 extern int 	 			shmid_proc;
 extern int				shmid_system_set;

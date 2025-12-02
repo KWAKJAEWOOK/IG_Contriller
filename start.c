@@ -92,6 +92,16 @@ int Load_System_Set()
         }
 
         /* M30 관련 설정 */
+        if (strcmp(para_name, "N_DIRCODE") == 0) {  // 방위에 따른, CVIBDirCode
+            system_set_ptr->n_dir_code = atoi(value);
+        } else if (strcmp(para_name, "E_DIRCODE") == 0) {
+            system_set_ptr->e_dir_code = atoi(value);
+        } else if (strcmp(para_name, "S_DIRCODE") == 0) {
+            system_set_ptr->s_dir_code = atoi(value);
+        } else if (strcmp(para_name, "W_DIRCODE") == 0) {
+            system_set_ptr->w_dir_code = atoi(value);
+        }
+
         else if (strcmp(para_name, "M30_N_IN_IP") == 0) {
 			strncpy(&system_set_ptr->m30_n_in_ip[0], value, 32);
 		} else if (strcmp(para_name, "M30_N_IN_COUNT") == 0) {

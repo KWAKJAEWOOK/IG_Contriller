@@ -22,7 +22,7 @@ SHM_SYSTEM_SET      *system_set_ptr = NULL;
 VMS_COMMAND_DATA    *vms_command_ptr = NULL;
 CONNECTION_STATUS   *connection_status_ptr = NULL;
 MESSAGEDATA	        *message_data_ptr = NULL;
-LISTINFO	        *list_info_ptr = NULL;
+// LISTINFO	        *list_info_ptr = NULL;
 
 /* Linux shm ids (Windows uses handles instead) */
 int shmid_proc       = -1;
@@ -30,7 +30,7 @@ int shmid_system_set = -1;
 int shmid_command_set  = -1;
 int shmid_connection_set = -1;
 int shmid_message_data = -1;
-int shmid_list_info    = -1;
+// int shmid_list_info    = -1;
 
 #ifdef _WIN32
 static HANDLE hMapProc   = NULL;
@@ -126,8 +126,8 @@ BOOL shm_all_create(void)
     shmid_message_data = shm_create(SHM_KEY_MESSAGEDATA, sizeof(MESSAGEDATA));
     if (shmid_message_data == -1) return false;
 
-    shmid_list_info = shm_create(SHM_KEY_LISTINFO, sizeof(LISTINFO));
-    if (shmid_list_info == -1) return false;
+    // shmid_list_info = shm_create(SHM_KEY_LISTINFO, sizeof(LISTINFO));
+    // if (shmid_list_info == -1) return false;
 
     return true;
 #else
@@ -170,7 +170,7 @@ BOOL shm_open(int shmid, int type)
     else if (type == SHMID_COMMAND_SET)   vms_command_ptr = (VMS_COMMAND_DATA*)shared_memory;
     else if (type == SHMID_CONNECTION_SET)   connection_status_ptr = (CONNECTION_STATUS*)shared_memory;
     else if (type == SHMID_MESSAGEDATA)  message_data_ptr = (MESSAGEDATA*)shared_memory;
-    else if (type == SHMID_LISTINFO)     list_info_ptr = (LISTINFO*)shared_memory;
+    // else if (type == SHMID_LISTINFO)     list_info_ptr = (LISTINFO*)shared_memory;
     else return false;
     return true;
 #else
@@ -238,12 +238,13 @@ BOOL shm_all_open(void)
         shmid_connection_set = shmget(SHM_KEY_SYSTEM_SET, sizeof(CONNECTION_STATUS), 0666);
     if (shmid_message_data == -1)
         shmid_message_data = shmget(SHM_KEY_MESSAGEDATA, sizeof(MESSAGEDATA), 0666);
-    if (shmid_list_info == -1)
-        shmid_list_info = shmget(SHM_KEY_LISTINFO, sizeof(LISTINFO), 0666);
+    // if (shmid_list_info == -1)
+    //     shmid_list_info = shmget(SHM_KEY_LISTINFO, sizeof(LISTINFO), 0666);
 
     // ID를 찾았는지 확인 (여전히 -1이면 실패)
-    if (shmid_proc == -1 || shmid_system_set == -1 || 
-        shmid_message_data == -1 || shmid_list_info == -1) {
+    // if (shmid_proc == -1 || shmid_system_set == -1 || 
+        // shmid_message_data == -1 || shmid_list_info == -1) {
+    if (shmid_proc == -1 || shmid_system_set == -1 || shmid_message_data == -1) {
         printf("shm_all_open] Failed to get shm IDs via shmget.\n");
         return FALSE;
     }
@@ -251,8 +252,9 @@ BOOL shm_all_open(void)
     BOOL ok1 = shm_open(shmid_proc,       SHMID_PROCESS_DATA);
     BOOL ok2 = shm_open(shmid_system_set, SHMID_SYSTEM_SET);
     BOOL ok3 = shm_open(shmid_message_data, SHMID_MESSAGEDATA);
-    BOOL ok4 = shm_open(shmid_list_info, SHMID_LISTINFO);
-    return (ok1 && ok2 && ok3 && ok4);
+    // BOOL ok4 = shm_open(shmid_list_info, SHMID_LISTINFO);
+    // return (ok1 && ok2 && ok3 && ok4);
+    return (ok1 && ok2 && ok3);
 }
 
 int shm_close(void)
@@ -262,7 +264,7 @@ int shm_close(void)
     if (proc_shm_ptr   && shmdt(proc_shm_ptr)   != -1){ proc_shm_ptr   = NULL; nReturn++; }
     if (system_set_ptr && shmdt(system_set_ptr) != -1){ system_set_ptr = NULL; nReturn++; }
     if (message_data_ptr && shmdt(message_data_ptr) != -1){ message_data_ptr = NULL; nReturn++; }
-    if (list_info_ptr && shmdt(list_info_ptr) != -1){ list_info_ptr = NULL; nReturn++; }
+    // if (list_info_ptr && shmdt(list_info_ptr) != -1){ list_info_ptr = NULL; nReturn++; }
     return nReturn;
 #else
     if (proc_shm_ptr)   { UnmapViewOfFile(proc_shm_ptr);   proc_shm_ptr   = NULL; nReturn++; }
@@ -281,7 +283,7 @@ int shm_delete(void)
     if (shmid_proc       != -1 && shmctl(shmid_proc,       IPC_RMID, NULL) != -1) nReturn++;
     if (shmid_system_set != -1 && shmctl(shmid_system_set, IPC_RMID, NULL) != -1) nReturn++;
     if (shmid_message_data != -1 && shmctl(shmid_message_data, IPC_RMID, NULL) != -1) nReturn++;
-    if (shmid_list_info != -1 && shmctl(shmid_list_info, IPC_RMID, NULL) != -1) nReturn++;
+    // if (shmid_list_info != -1 && shmctl(shmid_list_info, IPC_RMID, NULL) != -1) nReturn++;
     return nReturn;
 #else
     if (proc_shm_ptr)   { UnmapViewOfFile(proc_shm_ptr);   proc_shm_ptr   = NULL; nReturn++; }
