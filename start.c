@@ -35,7 +35,9 @@ void Generate_Group_IP(char (*ip_list)[32], int count) {	// 기준 IP(0번 인�
         }
         snprintf(ip_list[i], 32, "%d.%d.%d.%d", 
                  temp_ip[0], temp_ip[1], temp_ip[2], temp_ip[3]);	// 결과 배열에 저장
-        printf("Generated IP[%d]: %s\n", i, ip_list[i]);	// 디버깅용 출력
+    }
+    for (int i = 0; i < count; i++) {
+        printf("M30 IP[%d]: %s\n", i, ip_list[i]);	// 디버깅용 출력
     }
 }
 

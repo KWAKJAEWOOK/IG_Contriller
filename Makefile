@@ -58,7 +58,7 @@ M30_Manager.out: $(OBJ_M30) $(OBJ_COMMON)
 Connection_Manager.out: $(OBJ_CONN) $(OBJ_COMMON)
 	$(CC) -o $@ $^ $(LDFLAGS) $(LIBS)
 
-BH1750_Manager.out: $(OBJ_BH1750) $(OBJ_BH1750)
+BH1750_Manager.out: $(OBJ_BH1750) $(OBJ_COMMON)
 	$(CC) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 end.out: $(OBJ_END) $(OBJ_COMMON)

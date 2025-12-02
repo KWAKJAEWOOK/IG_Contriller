@@ -217,6 +217,22 @@ BOOL shm_open(int shmid, int type)
 
 BOOL shm_all_open(void)
 {
+    if (shmid_proc == -1) 
+        shmid_proc = shmget(SHM_KEY_PROCESS, sizeof(SHM_PROC_DATA), 0666);
+    if (shmid_system_set == -1) 
+        shmid_system_set = shmget(SHM_KEY_SYSTEM_SET, sizeof(SHM_SYSTEM_SET), 0666);
+    if (shmid_message_data == -1)
+        shmid_message_data = shmget(SHM_KEY_MESSAGEDATA, sizeof(MESSAGEDATA), 0666);
+    if (shmid_list_info == -1)
+        shmid_list_info = shmget(SHM_KEY_LISTINFO, sizeof(LISTINFO), 0666);
+
+    // ID를 찾았는지 확인 (여전히 -1이면 실패)
+    if (shmid_proc == -1 || shmid_system_set == -1 || 
+        shmid_message_data == -1 || shmid_list_info == -1) {
+        printf("shm_all_open] Failed to get shm IDs via shmget.\n");
+        return FALSE;
+    }
+
     BOOL ok1 = shm_open(shmid_proc,       SHMID_PROCESS_DATA);
     BOOL ok2 = shm_open(shmid_system_set, SHMID_SYSTEM_SET);
     BOOL ok3 = shm_open(shmid_message_data, SHMID_MESSAGEDATA);

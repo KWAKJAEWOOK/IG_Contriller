@@ -224,8 +224,8 @@ void *do_thread(void * data)	// 100ms 주기로 공유메모리 수신 / 송신
 		if(st_1s_cnt++ >= 9)
 		{
 			st_1s_cnt = 0;
-			if ((nowtime-last_keep_alive_time) >= 1) {	// 1초 이상 데이터가 안 들어오면
-				logger_log(LOG_LEVEL_ERROR, "1초 이상 수신 데이터 없음. 소켓 해제 및 재연결 시도");
+			if ((nowtime-last_keep_alive_time) >= 3) {	// 3초 이상 데이터가 안 들어오면
+				logger_log(LOG_LEVEL_ERROR, "3초 이상 수신 데이터 없음. 소켓 해제 및 재연결 시도");
 				close(HandleIndex);
 				HandleIndex = -1;
 				bConnected = FALSE;
@@ -292,7 +292,7 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 
-	if (logger_init("IG_Server_Manager_Log", 100) != 0) {	// 로거 테스트용 100mb
+	if (logger_init("Logs/IG_Server_Manager_Log", 100) != 0) {	// 로거 테스트용 100mb
 		logger_log(LOG_LEVEL_ERROR, "Logger init failed");
         exit(EXIT_FAILURE);
     }

@@ -24,6 +24,7 @@
    -. 컴파일 방법 : gcc -o bh1750 bh1750.c
 */
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <fcntl.h>

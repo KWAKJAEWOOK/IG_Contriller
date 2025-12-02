@@ -100,7 +100,7 @@ int logger_init(const char* log_dir, int disk_size_threshold_mb) {
     
     struct stat st = {0};
     if (stat(g_logger.log_dir, &st) == -1) {
-        mkdir(g_logger.log_dir, 0755);
+        mkdir(g_logger.log_dir, 0777);
     }
     
     // 초기 로그 파일 이름 설정 (실제 파일 생성은 logger_log에서)
