@@ -54,26 +54,28 @@ typedef struct {
 	todo:
 	IG_Server_Manager에서 MESSAGEDATA를 기반으로 csv 파일과 대조 및 표출 우선순위 및 표출 내용을 계산,
 	M30, LED 제어를 위한 상태를 담는 구조체
-	M30_Manager, LED_Manager에선 이것만 보고 표출 패킷 뿌림 (현재 표출 내용과 변경이 있는 장치에만)
+	M30_Manager, LED_Manager에선 이것을 참고하여 표출 패킷을 뿌림 (현재 표출 내용과 변경이 있는 장치에만)
 */
 typedef struct {
     int MsgCount;	// 디버깅용, 원본 데이터의 MsgCount
 
-	int n_in_msg;	// 북쪽, 교차로 진입 방향 볼라드 그룹에 뿌릴 메시지 번호
-	int n_load_msg;	// 북쪽, 교차로 진입 방향 지주/가드레일 그룹에 뿌릴 메시지 번호
-	int n_out_msg;	// 북쪽, 교차로 진출 방향 볼라드 그룹에 뿌릴 메시지 번호
+	int n_in_msg[3];	// 북쪽, 교차로 진입 방향 볼라드 그룹에 뿌릴 메시지 번호와, 상응하는 객체 속도, PET 값 (객체 속도나 PET 값이 없으면 -1로 저장함)
+	int n_load_msg[3];	// 북쪽, 교차로 진입 방향 지주/가드레일 그룹에 뿌릴 메시지 번호와, 상응하는 객체 속도, PET 값
+	int n_out_msg[3];	// 북쪽, 교차로 진출 방향 볼라드 그룹에 뿌릴 메시지 번호와, 상응하는 객체 속도, PET 값
 
-	int e_in_msg;
-	int e_load_msg;
-	int e_out_msg;
+	int e_in_msg[3];
+	int e_load_msg[3];
+	int e_out_msg[3];
 
-	int s_in_msg;
-	int s_load_msg;
-	int s_out_msg;
+	int s_in_msg[3];
+	int s_load_msg[3];
+	int s_out_msg[3];
 
-	int w_in_msg;
-	int w_load_msg;
-	int w_out_msg;
+	int w_in_msg[3];
+	int w_load_msg[3];
+	int w_out_msg[3];
+
+	float brightness;	// 조도센서에서 가져온 밝기값
 } VMS_COMMAND_DATA;
 
 typedef struct {	// 소켓 통신 상태정보. true면 연결중, false면 연결 끊김
@@ -123,8 +125,6 @@ typedef struct _system_set {
 	char			m30_w_out_ip[5][32];
 
 	int				m30_port;
-
-	float			brightness;	// 조도센서에서 가져온 밝기값
 
 	shm_ringbuf_t 	msg_IG_Server_Q;
 	shm_ringbuf_t 	msg_LED_Q;

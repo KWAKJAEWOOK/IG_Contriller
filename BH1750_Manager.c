@@ -94,7 +94,7 @@ int main(void) {
             // 데이터시트: lux = raw / 1.2 (연속 고해상도 모드)
             double lux = raw / 1.2;
             printf("BH1750: %.2f lux\n", lux);
-            system_set_ptr->brightness = lux; // 공유메모리에 조도값 업데이트
+            vms_command_ptr->brightness = lux; // 공유메모리에 조도값 업데이트
             fflush(stdout);
         }
         sleep(1); // 1s마다 읽기

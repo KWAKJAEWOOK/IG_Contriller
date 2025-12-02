@@ -136,6 +136,7 @@ void packet_frame() {
     }
 
     if (bReturn == TRUE && nReadSize > 0) {
+		if (connection_status_ptr->ig_server_conn == false) { connection_status_ptr->ig_server_conn = true; }	// 데이터 정상 수신 시 통신상태 정상
 		g_buffer_len += nReadSize;
 		last_keep_alive_time = time(NULL);
 		// 디버깅용 출력
@@ -257,6 +258,9 @@ void *do_thread(void * data)	// 100ms 주기로 공유메모리 수신 / 송신
 		}
 	}
 }
+// ================================ 기능 구현 함수 ===============================
+// todo. 수신한 JSON 객체를 파싱하여 message_data_ptr에 저장해두는 함수
+// todo. 객체 별 교차로 진입 방향 및 진출 방향을 추정하고, 중요 내용들을 vms_command_ptr에 업데이트
 // ============================================================================
 int main()
 {
@@ -307,6 +311,7 @@ int main()
 	{
 		usleep(50000);  //50ms
 		if(bConnected == false) {
+			connection_status_ptr->ig_server_conn = false;
             static time_t last_retry = 0;
             time_t current_time = time(NULL);
             if (current_time - last_retry > 3) { // 3초마다 재시도
