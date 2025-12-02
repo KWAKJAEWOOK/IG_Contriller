@@ -76,6 +76,28 @@ typedef struct {
 	int w_out_msg;
 } VMS_COMMAND_DATA;
 
+typedef struct {	// 소켓 통신 상태정보. true면 연결중, false면 연결 끊김
+	bool ig_server_conn;
+
+	bool led_conn;
+
+	bool m30_n_in_comm[5];
+	bool m30_n_load_comm[5];
+	bool m30_n_out_comm[5];
+
+	bool m30_e_in_comm[5];
+	bool m30_e_load_comm[5];
+	bool m30_e_out_comm[5];
+
+	bool m30_s_in_comm[5];
+	bool m30_s_load_comm[5];
+	bool m30_s_out_comm[5];
+
+	bool m30_w_in_comm[5];
+	bool m30_w_load_comm[5];
+	bool m30_w_out_comm[5];
+} CONNECTION_STATUS;
+
 typedef struct _system_set {
 	int 	master_id;
 
@@ -175,6 +197,7 @@ enum {
 	SHMID_PROCESS_DATA = 0,
 	SHMID_SYSTEM_SET,
 	SHMID_COMMAND_SET,
+	SHMID_CONNECTION_SET,
 	SHMID_MESSAGEDATA,
 	SHMID_LISTINFO
 };
@@ -195,6 +218,7 @@ extern SHM_PROC_DATA				*proc_shm_ptr;
 extern SHM_SYSTEM_SET     			*system_set_ptr;
 
 extern VMS_COMMAND_DATA				*vms_command_ptr;
+extern CONNECTION_STATUS			*connection_status_ptr;
 extern MESSAGEDATA					*message_data_ptr;
 extern LISTINFO						*list_info_ptr;
 

@@ -20,6 +20,7 @@
 SHM_PROC_DATA       *proc_shm_ptr   = NULL;
 SHM_SYSTEM_SET      *system_set_ptr = NULL;
 VMS_COMMAND_DATA    *vms_command_ptr = NULL;
+CONNECTION_STATUS   *connection_status_ptr = NULL;
 MESSAGEDATA	        *message_data_ptr = NULL;
 LISTINFO	        *list_info_ptr = NULL;
 
@@ -27,6 +28,7 @@ LISTINFO	        *list_info_ptr = NULL;
 int shmid_proc       = -1;
 int shmid_system_set = -1;
 int shmid_command_set  = -1;
+int shmid_connection_set = -1;
 int shmid_message_data = -1;
 int shmid_list_info    = -1;
 
@@ -118,6 +120,9 @@ BOOL shm_all_create(void)
     shmid_command_set = shm_create(SHM_KEY_SYSTEM_SET, sizeof(VMS_COMMAND_DATA));
     if (shmid_command_set == -1) return false;
 
+    shmid_connection_set = shm_create(SHM_KEY_SYSTEM_SET, sizeof(CONNECTION_STATUS));
+    if (shmid_connection_set == -1) return false;
+
     shmid_message_data = shm_create(SHM_KEY_MESSAGEDATA, sizeof(MESSAGEDATA));
     if (shmid_message_data == -1) return false;
 
@@ -163,6 +168,7 @@ BOOL shm_open(int shmid, int type)
     if (type == SHMID_PROCESS_DATA)      proc_shm_ptr   = (SHM_PROC_DATA*)shared_memory;
     else if (type == SHMID_SYSTEM_SET)   system_set_ptr = (SHM_SYSTEM_SET*)shared_memory;
     else if (type == SHMID_COMMAND_SET)   vms_command_ptr = (VMS_COMMAND_DATA*)shared_memory;
+    else if (type == SHMID_CONNECTION_SET)   connection_status_ptr = (CONNECTION_STATUS*)shared_memory;
     else if (type == SHMID_MESSAGEDATA)  message_data_ptr = (MESSAGEDATA*)shared_memory;
     else if (type == SHMID_LISTINFO)     list_info_ptr = (LISTINFO*)shared_memory;
     else return false;
@@ -228,6 +234,8 @@ BOOL shm_all_open(void)
         shmid_system_set = shmget(SHM_KEY_SYSTEM_SET, sizeof(SHM_SYSTEM_SET), 0666);
     if (shmid_command_set == -1) 
         shmid_command_set = shmget(SHM_KEY_SYSTEM_SET, sizeof(VMS_COMMAND_DATA), 0666);
+    if (shmid_connection_set == -1) 
+        shmid_connection_set = shmget(SHM_KEY_SYSTEM_SET, sizeof(CONNECTION_STATUS), 0666);
     if (shmid_message_data == -1)
         shmid_message_data = shmget(SHM_KEY_MESSAGEDATA, sizeof(MESSAGEDATA), 0666);
     if (shmid_list_info == -1)
