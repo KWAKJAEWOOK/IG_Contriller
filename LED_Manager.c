@@ -172,6 +172,14 @@ void *do_thread(void *data) {
 // todo. vms_command_ptr 내부 값을 확인하고, 차량들의 주행 경로를 제외한 LED들의 표출을 검은색으로 바꾸는 함수
 // todo. vms_command_ptr 내부 값을 확인하고, 상충이 예상되는 지점의 부분에 붉은색->검은색 점멸 표출 함수 (PET 값이 작으면 작을수록 빠르게 점멸)
 // todo. 응답이 없으면 connection_status_ptr 연결상태에 기록하고, 재연결 시도
+/*
+패킷: $IDXSET:XXXXXXXXXXXX [XXX(dimmer ID: 001~999), XXX(RED: 0~255), XXX(GREEN: 0~255), XXX(BLUE: 0~255)]
+    -> ACK: $OK19
+    -> 선택되지 않은 Dimmer는 마지막으로 설정된 출력(IDXSET, SEEN, OVSTAEND) 유지
+패킷: $CLEAN [전체 Dimmer 에 대하여, IDXSET으로 설정된 출력 설정 초기화]
+    -> ACK: $OK19
+    -> IDXSET 이전에 설정된 출력(SEEN, OVSTAEND) 유지
+*/
 // ============================ MAIN ============================
 int main() {
     if (shm_all_open() == false) {
