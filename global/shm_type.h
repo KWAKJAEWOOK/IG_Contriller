@@ -215,14 +215,14 @@ typedef struct {	// 간소화시킨 IG-Server 수신 메시지
 				// float timeOffset;	// 안씀
 				float speed;
 				// float heading;	// 사실상 안들어옴
-			} WayPoint[20];	// 최대 20개
+			} WayPoint[23];	// 최대 23개 제한 (웨이즈원)
 		} HostObject;
 		struct {	// RemoteObject
 			char ObjectType[32];
 			char ObjectID[32];
 			// bool IsDrivingIntentShared;
 			// int IGIntersectionIntent;
-			// int CVIBDirCode;	// todo. 추가 요청 중
+			// int CVIBDirCode;	// todo. 웨이즈원에 추가 요청 중
 			int Num_Of_RO_WayPoint;	// 유효한 RO_WayPoint 개수
 			struct {
 				float lat;
@@ -231,8 +231,8 @@ typedef struct {	// 간소화시킨 IG-Server 수신 메시지
 				// float timeOffset;	// 안씀
 				float speed;
 				// float heading;	// 사실상 안들어옴
-			} WayPoint[20];	// 최대 20개
-		} RemoteObject;
+			} WayPoint[23];	// 최대 23개 제한 (웨이즈원)
+		} RemoteObject;	// 각 ApproachTrafficInfo당 최대 1개, 있을수도 없을수도 (ConflictPos나 PET가 있으면 있음)
 	} ApproachTrafficInfo[4];
 } MESSAGEDATA;
 // Shared Memory -------------------------------------------------

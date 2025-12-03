@@ -18,6 +18,10 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <string.h>
+#include <stdarg.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
 
 #include "global/global.h"
 #include "global/shm_type.h"
@@ -38,6 +42,103 @@ void safe_strcpy(char* dest, cJSON* item, size_t max_len) {	// json 객체에서
         dest[max_len - 1] = '\0';
     } else {
         dest[0] = '\0';
+    }
+}
+
+//========================== 데이터 로깅을 위한 함수 =============================
+#define SPECIFIC_LOG_LIMIT_MB 500	// 각 로그 폴더 최대 용량
+
+typedef enum {
+    LOG_TYPE_RAW,   // IG-Server에서 수신한 Raw Data (JSON)
+    LOG_TYPE_SHM,   // Raw Data 1차 가공해서 줄인 간소화 데이터
+    LOG_TYPE_VMS    // 간소화시킨 데이터로 만든, 최종 표출 결과 로깅
+} LOG_DATA_TYPE;
+
+long long get_specific_dir_size(const char* path) {	// 디렉토리 크기 계산
+    long long total_size = 0;
+    DIR *d = opendir(path);
+    if (!d) return 0;
+
+    struct dirent *dir;
+    while ((dir = readdir(d)) != NULL) {
+        if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) continue;
+        
+        char full_path[512];
+        snprintf(full_path, sizeof(full_path), "%s/%s", path, dir->d_name);
+        
+        struct stat st;
+        if (stat(full_path, &st) == 0) {
+            total_size += st.st_size;
+        }
+    }
+    closedir(d);
+    return total_size;
+}
+void remove_oldest_specific_log(const char* dir_path) {	// 가장 오래된 로그 파일 삭제
+    DIR *d = opendir(dir_path);
+    if (!d) return;
+
+    struct dirent *dir;
+    char oldest_file[512] = "";
+    time_t oldest_time = 0;
+
+    while ((dir = readdir(d)) != NULL) {
+        if (strstr(dir->d_name, ".log")) { // log 파일만
+            char full_path[512];
+            snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, dir->d_name);
+
+            struct stat st;
+            if (stat(full_path, &st) == 0) {
+                if (oldest_time == 0 || st.st_mtime < oldest_time) {
+                    oldest_time = st.st_mtime;
+                    strcpy(oldest_file, full_path);
+                }
+            }
+        }
+    }
+    closedir(d);
+
+    if (strlen(oldest_file) > 0) {
+        remove(oldest_file);
+        // logger_log(LOG_LEVEL_INFO, "Deleted old specific log: %s", oldest_file); 
+    }
+}
+
+void Log_data(LOG_DATA_TYPE type, const char* fmt, ...) {	// 디버깅을 위한 데이터 로깅용 함수
+	char dir_path[128];
+    char file_path[256];
+    char date_str[32];
+	switch(type) {	// 타입별 디렉토리 경로 설정
+        case LOG_TYPE_RAW: strcpy(dir_path, "Logs/IG_Server_Manager_Log/RawData"); break;
+        case LOG_TYPE_SHM: strcpy(dir_path, "Logs/IG_Server_Manager_Log/ShmData"); break;
+        case LOG_TYPE_VMS: strcpy(dir_path, "Logs/IG_Server_Manager_Log/VmsCmd"); break;
+        default: return;
+    }
+
+	struct stat st = {0};
+    if (stat(dir_path, &st) == -1) {
+        mkdir(dir_path, 0777);	// 디렉토리 없으면 만들어
+    }
+
+	long long limit_bytes = (long long)SPECIFIC_LOG_LIMIT_MB * 1024 * 1024;	// 디렉토리에 용량이 넘치면 삭제
+    while (get_specific_dir_size(dir_path) > limit_bytes) {
+        remove_oldest_specific_log(dir_path);
+    }
+
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    snprintf(date_str, sizeof(date_str), "%04d-%02d-%02d", (t->tm_year + 1900), (t->tm_mon + 1), (t->tm_mday));
+    snprintf(file_path, sizeof(file_path), "%s/%s.log", dir_path, date_str);
+
+    FILE *fp = fopen(file_path, "a");
+    if (fp) {
+        va_list args;
+        va_start(args, fmt);
+        fprintf(fp, "[%02d:%02d:%02d] ", t->tm_hour, t->tm_min, t->tm_sec);
+        vfprintf(fp, fmt, args);
+        fprintf(fp, "\n");
+        va_end(args);
+        fclose(fp);
     }
 }
 //===========================================================================
@@ -92,9 +193,26 @@ void load_scenario_csv() {	// scenario.CSV 파일 읽어서 구조체에 저장�
 
 //==================================== VMS 제어용 공유메모리 업데이트 관련 =====================================
 
-void estimation_direction_code() {	// Waypoint의 GPS 값을 가지고 객체의 진입/진출 방향을 추정하는 코드 (CVIBDirCode 추가되면 사용 축소 가능)
-	// todo. 객체의 WaypointList 데이터를 활용해서, system_set_ptr 내부에 저장된 CVIBDirCode로 변환하기
-	// todo. 변환한 CVIBDirCode로 HO_Egress_DC, RO_Entry_DC를 만들고 CSV 파일과 대조해서 M30 그룹별 표출 메시지 인덱스 결정
+void estimation_direction_code(uint8_t type) {	// Waypoint의 GPS 값을 가지고 객체의 진입/진출 방향을 추정하는 코드 (CVIBDirCode 추가되면 사용 축소 가능)
+	/*
+		객체의 WaypointList 데이터를 활용해서, system_set_ptr 내부에 저장된 CVIBDirCode로 변환하기.
+		변환한 CVIBDirCode로 HO_Egress_DC, RO_Entry_DC를 만들고 CSV 파일과 대조해서 M30 그룹별 표출 메시지 인덱스 결정.
+		8개의 방위각으로 구분할 수 있어야 함.
+		CVIBDirCode 정보: [북: 10, 동: 20, 남: 30, 서: 40, 북동: 50, 남동: 60, 남서: 70, 북서: 80]
+	*/
+	switch (type) {	// todo. type 코드에 따라 각각 다른 로직 적용하기
+		case 1:
+			// todo. 
+			break;
+		case 2:
+			// todo. 
+			break;
+		case 3:
+			// todo. 
+			break;
+		default:
+			break;
+	}
 }
 
 void update_vms_group(int *msg_group, int new_msg_id, int speed, int petgap) {	// 각 그룹 별로 최종 메시지 인덱스랑 speed, petgap 값 업데이트. 표출 우선도 관련 로직 들어가있음
@@ -217,12 +335,19 @@ static size_t g_buffer_len = 0;
 
 static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 객체 파싱 및 공유메모리에 업데이트
     const cJSON* json_MsgCount = cJSON_GetObjectItemCaseSensitive(json_root, "MsgCount");
-	if (cJSON_IsNumber(json_MsgCount)) { message_data_ptr->MsgCount; }
+	if (cJSON_IsNumber(json_MsgCount)) {
+		message_data_ptr->MsgCount;
+		Log_data(LOG_TYPE_SHM, "\nMsgCount: %d", message_data_ptr->MsgCount);
+	}
 	const cJSON* json_Timestamp = cJSON_GetObjectItemCaseSensitive(json_root, "Timestamp");
-    if (cJSON_IsString(json_Timestamp)) { strcpy(message_data_ptr->Timestamp, json_Timestamp->valuestring); }
+    if (cJSON_IsString(json_Timestamp)) {
+		strcpy(message_data_ptr->Timestamp, json_Timestamp->valuestring);
+		Log_data(LOG_TYPE_SHM, "Timestamp: %s", message_data_ptr->Timestamp);
+	}
 
     cJSON* json_ApproachTrafficInfoList = cJSON_GetObjectItem(json_root, "ApproachTrafficInfoList");	// ApproachTrafficInfoList 배열 파싱
     if (cJSON_IsArray(json_ApproachTrafficInfoList)) {
+		Log_data(LOG_TYPE_SHM, "ApproachTrafficInfoList");
         cJSON* json_ApproachTrafficInfo = NULL;
 		int traffic_info_index = 0;
         cJSON_ArrayForEach(json_ApproachTrafficInfo, json_ApproachTrafficInfoList) {	// 각 ApproachTrafficInfo 순회하기
@@ -241,9 +366,19 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 				message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lon = -1;
 				message_data_ptr->ApproachTrafficInfo[traffic_info_index].PET = -1;
 			}
+
+			Log_data(LOG_TYPE_SHM, " ApproachTrafficInfo no:%d\n"
+											"   ConflictPos_Lat: %f\n"
+											"   ConflictPos_Lon: %f\n"
+											"   PET: %f"
+										, message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lat
+										, message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lon
+										, message_data_ptr->ApproachTrafficInfo[traffic_info_index].PET);
+
 			const cJSON* json_PET_Threshold = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "PET_Threshold");
 			if (cJSON_IsNumber(json_PET_Threshold)) {
 				message_data_ptr->ApproachTrafficInfo[traffic_info_index].PET_Threshold = json_PET_Threshold->valuedouble;
+				Log_data(LOG_TYPE_SHM, "   PET_Threshold: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].PET_Threshold);
 			}
 
 			const cJSON* json_HostObject = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "HostObject");	// HO 파싱
@@ -255,21 +390,30 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 						, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectType));
 					safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID, json_HO_ObjectID->valuestring
 						, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID));
+
+					Log_data(LOG_TYPE_SHM, "   HostObject\n"
+											"      ObjectType: %s"
+											"      ObjectID: %s"
+											, message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectType
+											, message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID);
 				}
 				/*
 				todo. 위치 이동 후 주석 제거, 아래꺼 삭제
 				const cJSON* json_HostObj_CVIBDirCode = cJSON_GetObjectItemCaseSensitive(json_HostObject, "CVIBDirCode");
 				if (cJSON_IsNumber(json_HostObj_CVIBDirCode)) {
 					message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.CVIBDirCode = json_HostObj_CVIBDirCode->valueint;
+					Log_data(LOG_TYPE_SHM, "      CVIBDirCode: %d", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.CVIBDirCode);
 				}
 				*/
 				const cJSON* json_HostObj_CVIBDirCode = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "CVIBDirCode");
 				if (cJSON_IsNumber(json_HostObj_CVIBDirCode)) {
 					message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.CVIBDirCode = json_HostObj_CVIBDirCode->valueint;
+					Log_data(LOG_TYPE_SHM, "      CVIBDirCode: %d", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.CVIBDirCode);
 				}
 
 				const cJSON* json_HO_WayPointList = cJSON_GetObjectItemCaseSensitive(json_HostObject, "WayPointList");
 				if (cJSON_IsArray(json_HO_WayPointList)) {
+					Log_data(LOG_TYPE_SHM, "      WayPointList");
 					cJSON* json_WayPoint = NULL;
 					int wayPoint_index = 0;
 					cJSON_ArrayForEach(json_WayPoint, json_HO_WayPointList) {	// 각 WayPoint 순회하기
@@ -281,11 +425,21 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 								message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lat = json_WayPoint_lat->valuedouble;
 								message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lon = json_WayPoint_lon->valuedouble;
 								message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].speed = json_WayPoint_speed->valuedouble;
+
+								Log_data(LOG_TYPE_SHM, "            WayPoint no %d\n"
+														"               Lat: %f"
+														"               Lon: %f"
+														"               Speed: %f"
+														, wayPoint_index
+														, message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lat
+														, message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lon
+														, message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].speed);
 							}
 						}
 						wayPoint_index++;
 					}
 					message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.Num_Of_HO_WayPoint = wayPoint_index;
+					Log_data(LOG_TYPE_SHM, "      Num_Of_HO_WayPoint: %d", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.Num_Of_HO_WayPoint);
 				}
 			}
 			const cJSON* json_RemoteObject = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "RemoteObject");	// RO 파싱
@@ -297,16 +451,24 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 						, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectType));
 					safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID, json_RO_ObjectID->valuestring
 						, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID));
+
+					Log_data(LOG_TYPE_SHM, "   RemoteObject\n"
+											"      ObjectType: %s"
+											"      ObjectID: %s"
+											, message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectType
+											, message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID);
 				}
 				/*
 				todo. 웨이즈원이 추가해주면 주석 제거하기
 				const cJSON* json_RemoteObj_CVIBDirCode = cJSON_GetObjectItemCaseSensitive(RemoteObject, "CVIBDirCode");
 				if (cJSON_IsNumber(json_RemoteObj_CVIBDirCode)) {
 					message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.CVIBDirCode = json_RemoteObj_CVIBDirCode->valueint;
+					Log_data(LOG_TYPE_SHM, "      CVIBDirCode: %d", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.CVIBDirCode);
 				}
 				*/
 				const cJSON* json_RO_WayPointList = cJSON_GetObjectItemCaseSensitive(json_RemoteObject, "WayPointList");
 				if (cJSON_IsArray(json_RO_WayPointList)) {
+					Log_data(LOG_TYPE_SHM, "      WayPointList");
 					cJSON* json_WayPoint = NULL;
 					int wayPoint_index = 0;
 					cJSON_ArrayForEach(json_WayPoint, json_RO_WayPointList) {	// 각 WayPoint 순회하기
@@ -318,16 +480,27 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 								message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lat = json_WayPoint_lat->valuedouble;
 								message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lon = json_WayPoint_lon->valuedouble;
 								message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].speed = json_WayPoint_speed->valuedouble;
+
+								Log_data(LOG_TYPE_SHM, "            WayPoint no %d\n"
+														"               Lat: %f"
+														"               Lon: %f"
+														"               Speed: %f"
+														, wayPoint_index
+														, message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lat
+														, message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lon
+														, message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].speed);
 							}
 						}
 						wayPoint_index++;
 					}
 					message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.Num_Of_RO_WayPoint = wayPoint_index;
+					Log_data(LOG_TYPE_SHM, "      Num_Of_RO_WayPoint: %d", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.Num_Of_RO_WayPoint);
 				}
 			}
             traffic_info_index++;
         }
 		message_data_ptr->Num_Of_ApproachTrafficInfo = traffic_info_index;
+		Log_data(LOG_TYPE_SHM, "Num_Of_ApproachTrafficInfo: %d", message_data_ptr->Num_Of_ApproachTrafficInfo);
     }
 	calc_vms_command();	// 파싱 후 VMS 제어용 정보 공유메모리에 업데이트하기
 }
@@ -370,7 +543,8 @@ void process_parsing() {    // 글로벌 버퍼에서 데이터 파싱
 				/* 디버깅용 수신 JSON 데이터 로깅 */
                 char *json_string = cJSON_PrintUnformatted(json_root);
                 if (json_string != NULL) {
-                    logger_log(LOG_LEVEL_DEBUG, "수신 JSON 객체:\n%s\n", json_string);
+                    // logger_log(LOG_LEVEL_DEBUG, "수신 JSON 객체:\n%s\n", json_string);
+					Log_data(LOG_TYPE_RAW, "%s", json_string);	// raw data 로깅
                     cJSON_free(json_string);
                 }
                 cJSON_Delete(json_root);
@@ -379,7 +553,6 @@ void process_parsing() {    // 글로벌 버퍼에서 데이터 파싱
                 logger_log(LOG_LEVEL_ERROR, "JSON 파싱 오류. (len=%zu)\n", msg_len);
             }
             remove_from_global_buffer(msg_len + 4); // 데이터+길이만큼 글로벌 버퍼에서 삭제
-
         }
     }
 }
