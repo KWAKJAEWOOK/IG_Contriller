@@ -191,6 +191,7 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
         }
 		message_data_ptr->Num_Of_ApproachTrafficInfo = traffic_info_index;
     }
+	calc_vms_command();	// 파싱 후 VMS 제어용 정보 공유메모리에 업데이트하기
 }
 
 void append_to_global_buffer(uint8_t* new_data, size_t length) {	// 수신한 데이터를 글로벌 버퍼에 업로드
