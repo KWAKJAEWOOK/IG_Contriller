@@ -21,7 +21,7 @@
 #include <stdarg.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <dirent.h>
+#include <math.h>
 
 #include "global/global.h"
 #include "global/shm_type.h"
@@ -143,7 +143,7 @@ void Log_data(LOG_DATA_TYPE type, const char* fmt, ...) {	// 디버깅을 위한
 }
 //===========================================================================
 
-//======================== scenaroi.CSV 파일 관련 =======================
+//======================== scenario.CSV 파일 관련 =======================
 typedef struct {	// scenario.CSV 읽어서 저장해두는 구조체
     int idx;
     int ho_entry;  // HO 교차로 진입 방향 코드
@@ -192,24 +192,89 @@ void load_scenario_csv() {	// scenario.CSV 파일 읽어서 구조체에 저장�
 }
 
 //==================================== VMS 제어용 공유메모리 업데이트 관련 =====================================
+#define PI 3.14159265358979323846
+#define DEG2RAD(x) ((x) * PI / 180.0)
+#define RAD2DEG(x) ((x) * 180.0 / PI)
 
-void estimation_direction_code(uint8_t type) {	// Waypoint의 GPS 값을 가지고 객체의 진입/진출 방향을 추정하는 코드 (CVIBDirCode 추가되면 사용 축소 가능)
-	/*
-		객체의 WaypointList 데이터를 활용해서, system_set_ptr 내부에 저장된 CVIBDirCode로 변환하기.
-		변환한 CVIBDirCode로 HO_Egress_DC, RO_Entry_DC를 만들고 CSV 파일과 대조해서 M30 그룹별 표출 메시지 인덱스 결정.
-		8개의 방위각으로 구분할 수 있어야 함.
-		CVIBDirCode 정보: [북: 10, 동: 20, 남: 30, 서: 40, 북동: 50, 남동: 60, 남서: 70, 북서: 80]
-	*/
-	switch (type) {	// todo. type 코드에 따라 각각 다른 로직 적용하기
-		case 1:
+double calculate_bearing(double lat1, double lon1, double lat2, double lon2) {	// 두 좌표(위/경도) 사이의 방위각(0~360도) 계산
+    double y = sin(DEG2RAD(lon2 - lon1)) * cos(DEG2RAD(lat2));
+    double x = cos(DEG2RAD(lat1)) * sin(DEG2RAD(lat2)) -
+               sin(DEG2RAD(lat1)) * cos(DEG2RAD(lat2)) * cos(DEG2RAD(lon2 - lon1));
+    double bearing = atan2(y, x);
+    return fmod((RAD2DEG(bearing) + 360.0), 360.0);
+}
+
+int bearing_to_dircode(double bearing) {	// 방위각을 8방향 CVIBDirCode로 변환
+    // CVIBDirCode: 북(10), 동(20), 남(30), 서(40), 북동(50), 남동(60), 남서(70), 북서(80)
+    // 8방위: 360도를 45도로 분할 (각 구간의 중심을 기준으로 +/- 22.5도)
+	// todo. system_set_ptr 내부에 저장된 CVIBDirCode를 보고 범위 결정 자동화
+    if (bearing >= 337.5 || bearing < 22.5)  return 10; // 북
+    if (bearing >= 22.5  && bearing < 67.5)  return 50; // 북동
+    if (bearing >= 67.5  && bearing < 112.5) return 20; // 동
+    if (bearing >= 112.5 && bearing < 157.5) return 60; // 남동
+    if (bearing >= 157.5 && bearing < 202.5) return 30; // 남
+    if (bearing >= 202.5 && bearing < 247.5) return 70; // 남서
+    if (bearing >= 247.5 && bearing < 292.5) return 40; // 서
+    if (bearing >= 292.5 && bearing < 337.5) return 80; // 북서
+    return 0;
+}
+
+/*
+	idx: ApproachTrafficInfo의 번호, i값
+	cal_type: 방향코드 추정 로직 타입
+	output_type: 추정할 정보 타입(1:HO 진입 방향 추정, 2:HO 진출 방향 추정, 3:RO 진입 방향 추정)
+*/
+int estimation_direction_code(uint8_t idx, uint8_t cal_type, uint8_t output_type) {	// Waypoint의 GPS 값을 가지고 객체의 진입/진출 방향을 추정하는 코드 (CVIBDirCode 추가되면 사용 축소 가능)
+	switch (cal_type) {	// todo. type 코드에 따라 각각 다른 로직 적용하기
+		case 1: {	// Waypoint의 초기 2점과, 마지막 2점을 각각 벡터화해서 진입/진출 방향 추정 방식
+			int output = 0;	// 뽑아낼 방향코드
+			if (output_type == 1) {	// HO 진입방향 추정 요청
+				int ho_wp_count = message_data_ptr->ApproachTrafficInfo[idx].HostObject.Num_Of_HO_WayPoint;
+				if (ho_wp_count >= 2) {	// HO 진입 방향 추정: 진입 방향 헤딩 계산
+					double lat1 = message_data_ptr->ApproachTrafficInfo[idx].HostObject.WayPoint[0].lat;
+					double lon1 = message_data_ptr->ApproachTrafficInfo[idx].HostObject.WayPoint[0].lon;
+					double lat2 = message_data_ptr->ApproachTrafficInfo[idx].HostObject.WayPoint[1].lat;
+					double lon2 = message_data_ptr->ApproachTrafficInfo[idx].HostObject.WayPoint[1].lon;
+					double bearing = calculate_bearing(lat1, lon1, lat2, lon2);
+					double entry_bearing = fmod(bearing + 180.0, 360.0);	// 진입 방향은 진행 방향(Bearing)의 반대편 도로니까
+					output = bearing_to_dircode(entry_bearing);
+					// todo. 추정 결과 로깅
+				}
+			}
+			if (output_type == 2) {	// HO 진출방향 추정 요청
+				int ho_wp_count = message_data_ptr->ApproachTrafficInfo[idx].HostObject.Num_Of_HO_WayPoint;
+				if (ho_wp_count >= 2) {	// HO 진출 방향 추정: 마지막 순간의 헤딩 계산
+					int last_idx = ho_wp_count - 1;
+					int prev_idx = ho_wp_count - 2;
+					double lat1 = message_data_ptr->ApproachTrafficInfo[idx].HostObject.WayPoint[prev_idx].lat;
+					double lon1 = message_data_ptr->ApproachTrafficInfo[idx].HostObject.WayPoint[prev_idx].lon;
+					double lat2 = message_data_ptr->ApproachTrafficInfo[idx].HostObject.WayPoint[last_idx].lat;
+					double lon2 = message_data_ptr->ApproachTrafficInfo[idx].HostObject.WayPoint[last_idx].lon;
+					double bearing = calculate_bearing(lat1, lon1, lat2, lon2);
+					output = bearing_to_dircode(bearing);
+					// todo. 추정 결과 로깅
+				}
+			}
+			if (output_type == 3) {	// RO 진입방향 추정 요청
+				int ro_wp_count = message_data_ptr->ApproachTrafficInfo[idx].RemoteObject.Num_Of_RO_WayPoint;
+				if (ro_wp_count >= 2) {	// RO 진입 방향 추정: 진입 방향 헤딩 계산
+					double lat1 = message_data_ptr->ApproachTrafficInfo[idx].RemoteObject.WayPoint[0].lat;
+					double lon1 = message_data_ptr->ApproachTrafficInfo[idx].RemoteObject.WayPoint[0].lon;
+					double lat2 = message_data_ptr->ApproachTrafficInfo[idx].RemoteObject.WayPoint[1].lat;
+					double lon2 = message_data_ptr->ApproachTrafficInfo[idx].RemoteObject.WayPoint[1].lon;
+					double bearing = calculate_bearing(lat1, lon1, lat2, lon2);
+					double entry_bearing = fmod(bearing + 180.0, 360.0);	// 진입 방향은 진행 방향(Bearing)의 반대편 도로니까
+					output = bearing_to_dircode(entry_bearing);
+					// todo. 추정 결과 로깅
+				}
+			}
+			return output;
+            break; }
+		case 2: {	// 교차로의 중앙 GPS 값을 기준으로, 첫번째 혹은 마지막 Waypoint 값으로 진입/진출 방향 추정 방식
+			int output = 0;	// 뽑아낼 방향코드
 			// todo. 
-			break;
-		case 2:
-			// todo. 
-			break;
-		case 3:
-			// todo. 
-			break;
+			return output;
+			break; }
 		default:
 			break;
 	}
@@ -268,16 +333,17 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
 
 	for (int i = 0; i < message_data_ptr->Num_Of_ApproachTrafficInfo; i++) {	// 공유메모리의 message_data_ptr->ApproachTrafficInfo 순회하면서 시나리오랑 매칭
 		int PETGap_i = (int)(message_data_ptr->ApproachTrafficInfo[i].PET_Threshold - message_data_ptr->ApproachTrafficInfo[i].PET);	// RO가 없으면 걍 큰값으로 남겠지머
+
 		int ho_entry_i = message_data_ptr->ApproachTrafficInfo[i].HostObject.CVIBDirCode;
 
 		int ho_egress_i = 0;
 		if (message_data_ptr->ApproachTrafficInfo[i].HostObject.Num_Of_HO_WayPoint > 0) {	// HO의 Waypoint가 있으면
-			// todo. estimation_direction_code()로 ho_egress_i 채우기
+			ho_egress_i = estimation_direction_code(i, 1, 2);
 		}	// Waypoint 없으면 ho_egress_i는 걍 0으로 두기
 
 		int ro_entry_i = 0;
 		if (message_data_ptr->ApproachTrafficInfo[i].PET != -1) {	// RO가 존재하면
-			// todo. estimation_direction_code()로 ro_entry_i 채우기
+			ro_entry_i = estimation_direction_code(i, 1, 3);
 		} // RO가 없으면 ro_entry_i는 걍 0으로 두기
 
 		int speed_i = 0;
@@ -336,7 +402,7 @@ static size_t g_buffer_len = 0;
 static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 객체 파싱 및 공유메모리에 업데이트
     const cJSON* json_MsgCount = cJSON_GetObjectItemCaseSensitive(json_root, "MsgCount");
 	if (cJSON_IsNumber(json_MsgCount)) {
-		message_data_ptr->MsgCount;
+		message_data_ptr->MsgCount = json_MsgCount->valueint;
 		Log_data(LOG_TYPE_SHM, "\nMsgCount: %d", message_data_ptr->MsgCount);
 	}
 	const cJSON* json_Timestamp = cJSON_GetObjectItemCaseSensitive(json_root, "Timestamp");
@@ -714,7 +780,6 @@ int main()
 		logger_log(LOG_LEVEL_ERROR, "Logger init failed");
         exit(EXIT_FAILURE);
     }
-	// todo. 디버깅을 위해 IG-Server에서 수신한 rawdata, message_data_ptr 데이터, vms_command_ptr 데이터를 각각 다른 디렉토리에 로깅하고싶은데
 
 	logger_log(LOG_LEVEL_INFO, "IG-Server Manager Start.");
 
