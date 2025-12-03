@@ -17,6 +17,7 @@
 #include <signal.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <string.h>
 
 #include "global/global.h"
 #include "global/shm_type.h"
@@ -30,16 +31,7 @@ time_t last_keep_alive_time;
 THANDLEINDEX HandleIndex = -1;
 volatile BOOL bConnected = false; // 연결 상태 플래그
 
-// Ctrl+C 종료 처리 핸들러
-void handle_sigint(int sig) {
-    printf("\nIG_Server_Manager Terminating... (Signal: %d)\n", sig);
-    if (shm_close() != 0) {
-        printf("shm_close() failed\n");
-    }
-    // 필요 시 소켓 close 추가
-    exit(0);
-}
-//=================== 공유메모리에 데이터 업데이트 관련 =======================
+//============================== 소소한 헬퍼함수 =============================
 void safe_strcpy(char* dest, cJSON* item, size_t max_len) {	// json 객체에서 문자열 복사할때 버퍼 오버플로우 방지 및 NULL 체크
     if (cJSON_IsString(item) && (item->valuestring != NULL)) {
         strncpy(dest, item->valuestring, max_len - 1);
@@ -48,11 +40,157 @@ void safe_strcpy(char* dest, cJSON* item, size_t max_len) {	// json 객체에서
         dest[0] = '\0';
     }
 }
+//===========================================================================
+
+//======================== scenaroi.CSV 파일 관련 =======================
+typedef struct {	// scenario.CSV 읽어서 저장해두는 구조체
+    int idx;
+    int ho_entry;  // HO 교차로 진입 방향 코드
+    int ho_egress; // HO 교차로 진출 방향 코드
+    int ro_entry;  // RO 교차로 진입 방향 코드
+
+    // 각 그룹별 표출 메시지 인덱스
+    int n_in, n_load, n_out;
+    int e_in, e_load, e_out;
+    int s_in, s_load, s_out;
+    int w_in, w_load, w_out;
+} SCENARIO_ROW;
+
+#define MAX_SCENARIO_ROWS 81	// csv 파일에 들어간 idx 최댓값
+SCENARIO_ROW g_scenario_table[MAX_SCENARIO_ROWS];
+int g_scenario_count = 0;
+
+void load_scenario_csv() {	// scenario.CSV 파일 읽어서 구조체에 저장해두기
+    FILE *fp = fopen("init/scenario.CSV", "r");
+    if (!fp) {
+        logger_log(LOG_LEVEL_ERROR, "Failed to open init/scenario.CSV");
+        return;
+    }
+
+    char line[1024];
+    int row = 0;
+
+    // 첫 줄(헤더) 건너뛰기
+    fgets(line, sizeof(line), fp);
+
+    while (fgets(line, sizeof(line), fp) && row < MAX_SCENARIO_ROWS) {
+        SCENARIO_ROW *r = &g_scenario_table[row];
+        int count = sscanf(line, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+            &r->idx, &r->ho_entry, &r->ho_egress, &r->ro_entry,
+            &r->n_in, &r->n_load, &r->n_out,
+            &r->e_in, &r->e_load, &r->e_out,
+            &r->s_in, &r->s_load, &r->s_out,
+            &r->w_in, &r->w_load, &r->w_out);
+        if (count >= 16) { // 한줄에 데이터가 빠져있으면 스킵
+            row++;
+        }
+    }
+    g_scenario_count = row;
+    fclose(fp);
+    logger_log(LOG_LEVEL_INFO, "Scenario Loaded. Total rows: %d", g_scenario_count);
+}
+
+//==================================== VMS 제어용 공유메모리 업데이트 관련 =====================================
+
+void estimation_direction_code() {	// Waypoint의 GPS 값을 가지고 객체의 진입/진출 방향을 추정하는 코드 (CVIBDirCode 추가되면 사용 축소 가능)
+	// todo. 객체의 WaypointList 데이터를 활용해서, system_set_ptr 내부에 저장된 CVIBDirCode로 변환하기
+	// todo. 변환한 CVIBDirCode로 HO_Egress_DC, RO_Entry_DC를 만들고 CSV 파일과 대조해서 M30 그룹별 표출 메시지 인덱스 결정
+}
+
+void update_vms_group(int *msg_group, int new_msg_id, int speed, int petgap) {	// 각 그룹 별로 최종 메시지 인덱스랑 speed, petgap 값 업데이트. 표출 우선도 관련 로직 들어가있음
+	// msg_group[0]: MsgID, [1]: Speed, [2]: PETGap(Threshold - PET)
+	if (new_msg_id > msg_group[0]) {	// new_msg_id가 기존보다 클 때
+		if (new_msg_id == 1) {	// 업데이트할 메시지 인덱스가 HO 단독 주행일 때
+			msg_group[0] = new_msg_id;
+			msg_group[1] = speed;
+			// petgap은 어짜피 표출때 안쓰니까 업데이트 안함
+		} else if (new_msg_id == 2) {	// 상충 경고일 때는 걍 다 갈아치우기
+			msg_group[0] = new_msg_id;
+			msg_group[1] = speed;
+			msg_group[2] = petgap;
+		}
+	} else if (new_msg_id == msg_group[0]) {	// 같은 메시지 표출이라면
+		if (new_msg_id == 1) {	// HO 단독주행일 때
+			msg_group[1] = (speed>=msg_group[1])?speed:msg_group[1];	// 더 빠른 객체껄로 업데이트
+			// petgap은 어짜피 표출때 안쓰니까 업데이트 안함
+		} else if (new_msg_id == 2) {	// 상충 경고면
+			if (petgap < msg_group[2]) {	// 더 위험할때만 업데이트
+				msg_group[1] = speed;
+				msg_group[2] = petgap;
+			}
+		}
+	}
+
+    
+    if (msg_group[0] < new_msg_id || petgap > msg_group[2]) {	// 기존 MsgID 인덱스가 작거나(표출 우선도가 낮음), 더 위험한 상황(Gap이 더 큼)이면 업데이트
+        msg_group[0] = new_msg_id;
+        msg_group[1] = speed;
+        msg_group[2] = petgap;
+    }
+}
 
 void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성하기
-	// todo. 한 메시지 프레임에서 각 ApproachTrafficInfo를 확인하고, PET_Threshold-PET 값과 HostObject의 객체 속도, 
-	// todo. HostObject의 진입/진출 방향과 RemoteObject의 진입 방향을 통해 scenario.CSV 파일과 대조하여 표출할 그룹과 메시지 번호 확인
-	// todo. 그룹별로 우선순위 높은 메시지 정보를 vms_command_ptr에 업데이트
+	// 기존 메시지값들 초기화 (객체 없으면 0번 인덱스의 메시지 뿌려야됨)
+	memset(vms_command_ptr->n_in_msg, 0, sizeof(vms_command_ptr->n_in_msg));
+    memset(vms_command_ptr->n_load_msg, 0, sizeof(vms_command_ptr->n_load_msg));
+    memset(vms_command_ptr->n_out_msg, 0, sizeof(vms_command_ptr->n_out_msg));
+    memset(vms_command_ptr->e_in_msg, 0, sizeof(vms_command_ptr->e_in_msg));
+    memset(vms_command_ptr->e_load_msg, 0, sizeof(vms_command_ptr->e_load_msg));
+    memset(vms_command_ptr->e_out_msg, 0, sizeof(vms_command_ptr->e_out_msg));
+    memset(vms_command_ptr->s_in_msg, 0, sizeof(vms_command_ptr->s_in_msg));
+    memset(vms_command_ptr->s_load_msg, 0, sizeof(vms_command_ptr->s_load_msg));
+    memset(vms_command_ptr->s_out_msg, 0, sizeof(vms_command_ptr->s_out_msg));
+    memset(vms_command_ptr->w_in_msg, 0, sizeof(vms_command_ptr->w_in_msg));
+    memset(vms_command_ptr->w_load_msg, 0, sizeof(vms_command_ptr->w_load_msg));
+    memset(vms_command_ptr->w_out_msg, 0, sizeof(vms_command_ptr->w_out_msg));
+
+	// 디버깅용 MsgCount랑 Timestamp 복사
+	strcpy(vms_command_ptr->Timestamp, message_data_ptr->Timestamp);
+    vms_command_ptr->MsgCount = message_data_ptr->MsgCount;
+
+	for (int i = 0; i < message_data_ptr->Num_Of_ApproachTrafficInfo; i++) {	// 공유메모리의 message_data_ptr->ApproachTrafficInfo 순회하면서 시나리오랑 매칭
+		int PETGap_i = (int)(message_data_ptr->ApproachTrafficInfo[i].PET_Threshold - message_data_ptr->ApproachTrafficInfo[i].PET);	// RO가 없으면 걍 큰값으로 남겠지머
+		int ho_entry_i = message_data_ptr->ApproachTrafficInfo[i].HostObject.CVIBDirCode;
+
+		int ho_egress_i = 0;
+		if (message_data_ptr->ApproachTrafficInfo[i].HostObject.Num_Of_HO_WayPoint > 0) {	// HO의 Waypoint가 있으면
+			// todo. estimation_direction_code()로 ho_egress_i 채우기
+		}	// Waypoint 없으면 ho_egress_i는 걍 0으로 두기
+
+		int ro_entry_i = 0;
+		if (message_data_ptr->ApproachTrafficInfo[i].PET != -1) {	// RO가 존재하면
+			// todo. estimation_direction_code()로 ro_entry_i 채우기
+		} // RO가 없으면 ro_entry_i는 걍 0으로 두기
+
+		int speed_i = 0;
+		if (message_data_ptr->ApproachTrafficInfo[i].HostObject.Num_Of_HO_WayPoint > 0) {	// HO Waypoint가 있으면, 첫번째 포인트의 속도값 긁어오기
+            speed_i = (int)(message_data_ptr->ApproachTrafficInfo[i].HostObject.WayPoint[0].speed);
+        }	// 없으면 0으로 두기
+
+		// todo. 시나리오랑 매칭
+		for (int j = 0; j < g_scenario_count; j++) {
+            SCENARIO_ROW *row_j = &g_scenario_table[j];
+            if (row_j->ho_entry == ho_entry_i && 
+                row_j->ho_egress == ho_egress_i && 
+                row_j->ro_entry == ro_entry_i) {
+                
+                // 매칭된 시나리오의 메시지 ID를 각 그룹에 업데이트
+                update_vms_group(vms_command_ptr->n_in_msg, row_j->n_in, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->n_load_msg, row_j->n_load, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->n_out_msg, row_j->n_out, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->e_in_msg, row_j->e_in, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->e_load_msg, row_j->e_load, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->e_out_msg, row_j->e_out, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->s_in_msg, row_j->s_in, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->s_load_msg, row_j->s_load, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->s_out_msg, row_j->s_out, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->w_in_msg, row_j->w_in, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->w_load_msg, row_j->w_load, speed_i, PETGap_i);
+                update_vms_group(vms_command_ptr->w_out_msg, row_j->w_out, speed_i, PETGap_i);
+                break;
+            }
+        }
+	}
 }
 //============================ TCP 연결 관리 =============================
 bool host_connect() {   // 클라이언트로써 연결 시도
@@ -385,6 +523,15 @@ void *do_thread(void * data)	// 100ms 주기로 공유메모리 수신 / 송신
 	}
 }
 // ============================================================================
+void handle_sigint(int sig) {	// Ctrl+C 종료 처리 핸들러
+    printf("\nIG_Server_Manager Terminating... (Signal: %d)\n", sig);
+    if (shm_close() != 0) {
+        printf("shm_close() failed\n");
+    }
+    // 필요 시 소켓 close 추가
+    exit(0);
+}
+// ============================================================================
 int main()
 {
 	int i;
@@ -394,7 +541,7 @@ int main()
 		logger_log(LOG_LEVEL_ERROR, "Logger init failed");
         exit(EXIT_FAILURE);
     }
-	// todo. IG-Server 수신 rawdata는 다른 경로에 따로 로깅 가능한지
+	// todo. 디버깅을 위해 IG-Server에서 수신한 rawdata, message_data_ptr 데이터, vms_command_ptr 데이터를 각각 다른 디렉토리에 로깅하고싶은데
 
 	logger_log(LOG_LEVEL_INFO, "IG-Server Manager Start.");
 
@@ -409,6 +556,8 @@ int main()
 		logger_log(LOG_LEVEL_ERROR, "IG_Server] msg_all_open() failed");
 		exit(-1);
 	}
+
+	load_scenario_csv();	// scenario.CSV 읽어서 저장해두기
 
 	signal(SIGINT, handle_sigint);
 

@@ -1,4 +1,4 @@
-idx,HostObjectEntryDirectionCode,HostObjectEgressDirectionCode,RemoteObjectEntryDirectionCode,A1,A2,A3,B1,B2,B3,C1,C2,C3,D1,D2,D3
+idx,HO_Entry_DC,HO_Egress_DC,RO_Entry_DC,N_IN,N_LOAD,N_OUT,E_IN,E_LOAD,E_OUT,S_IN,S_LOAD,S_OUT,W_IN,W_LOAD,W_OUT
 1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 2,1,1,0,1,1,1,0,0,0,0,0,0,0,0,0
 3,1,1,1,2,2,2,0,0,0,0,0,0,0,0,0
