@@ -44,6 +44,28 @@ THANDLEINDEX HandleIndex = -1;
 //     }
 // }
 
+int convert_dircode_to_count(int dircode) {	// CVIBDircode를 scenario.csv에 등록된 방향 인덱스로 변환하는 함수
+	switch (dircode)
+	{
+		case 10:	// 북
+			return 1;
+		case 50:	// 북동
+			return 1;
+		case 20:	// 동
+			return 2;
+		case 60:	// 남동
+			return 2;
+		case 30:
+			return 3;
+		case 70:
+			return 3;
+		case 40:
+			return 4;
+		case 80:
+			return 4;
+	}
+}
+
 //========================== 데이터 로깅을 위한 함수 =============================
 #define SPECIFIC_LOG_LIMIT_MB 500	// 각 로그 폴더 최대 용량
 
@@ -352,9 +374,9 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
 		// todo. 시나리오랑 매칭
 		for (int j = 0; j < g_scenario_count; j++) {
             SCENARIO_ROW *row_j = &g_scenario_table[j];
-            if (row_j->ho_entry == ho_entry_i && 
-                row_j->ho_egress == ho_egress_i && 
-                row_j->ro_entry == ro_entry_i) {
+            if (row_j->ho_entry == convert_dircode_to_count(ho_entry_i) && 
+                row_j->ho_egress == convert_dircode_to_count(ho_egress_i) && 
+                row_j->ro_entry == convert_dircode_to_count(ro_entry_i)) {	// 지금 시나리오 csv에서는 숫자순서대로 1234로 들어가있음
                 
                 // 매칭된 시나리오의 메시지 ID를 각 그룹에 업데이트
                 update_vms_group(vms_command_ptr->n_in_msg, row_j->n_in, speed_i, PETGap_i);
@@ -372,7 +394,8 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
                 break;
             }
         }
-		Log_data(LOG_TYPE_VMS, "표출 정보 생성: MsgCount: %d, Timestamp: %s\n"
+	}
+	Log_data(LOG_TYPE_VMS, "표출 정보 생성: MsgCount: %d, Timestamp: %s\n"
 								"   북쪽(북동쪽) 도로, 교차로 진입 방향 볼라드: msg:%d, spd:%d, pet_gap:%d\n"
 								"   북쪽(북동쪽) 도로, 가드레일 / 지주 타입: msg:%d, spd:%d, pet_gap:%d\n"
 								"   북쪽(북동쪽) 도로, 교차로 진출 방향 볼라드: msg:%d, spd:%d, pet_gap:%d\n\n"
@@ -409,7 +432,6 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
 							, vms_command_ptr->w_out_msg[0], vms_command_ptr->w_out_msg[1], vms_command_ptr->w_out_msg[2]
 						
 							, vms_command_ptr->brightness);
-	}
 }
 //============================ TCP 연결 관리 =============================
 bool host_connect() {   // 클라이언트로써 연결 시도
@@ -431,7 +453,7 @@ bool host_connect() {   // 클라이언트로써 연결 시도
 }
 //============================ TCP 수신 함수 =============================
 #define MAX_RECV_BUFFER_SIZE (1024 * 16)	// 한번에 최대 16kb
-static uint8_t g_recv_buffer[MAX_RECV_BUFFER_SIZE];	// 글로벌 버퍼
+static uint8_t g_recv_buffer[MAX_RECV_BUFFER_SIZE * 10];	// 글로벌 버퍼
 static size_t g_buffer_len = 0;
 
 static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 객체 파싱 및 공유메모리에 업데이트
