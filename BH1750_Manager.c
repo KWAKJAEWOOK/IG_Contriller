@@ -74,7 +74,7 @@ int main(void) {
         return 1;
     }
 
-    system_set_ptr->brightness = -1.0;    // 값 초기화
+    vms_command_ptr->brightness = -1.0;    // 값 초기화
 
     // 전원 ON → 리셋 → 연속 고해상도 모드 시작
     if (i2c_write_cmd(fd, BH1750_POWER_ON) < 0) { perror("POWER_ON"); return 1; }

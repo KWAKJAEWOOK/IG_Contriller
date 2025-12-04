@@ -241,7 +241,9 @@ typedef struct {	// 간소화시킨 IG-Server 수신 메시지
 #define SHM_KEY_SYSTEM_SET		10001
 
 #define SHM_KEY_MESSAGEDATA		10002
-// #define SHM_KEY_LISTINFO		10003
+#define SHM_KEY_COMMAND_SET     10003
+#define SHM_KEY_CONNECTION_SET  10004
+// #define SHM_KEY_LISTINFO		10005
 
 enum {
 	SHMID_PROCESS_DATA = 0,

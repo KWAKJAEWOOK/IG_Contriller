@@ -117,10 +117,10 @@ BOOL shm_all_create(void)
     shmid_system_set = shm_create(SHM_KEY_SYSTEM_SET, sizeof(SHM_SYSTEM_SET));
     if (shmid_system_set == -1) return false;
 
-    shmid_command_set = shm_create(SHM_KEY_SYSTEM_SET, sizeof(VMS_COMMAND_DATA));
+    shmid_command_set = shm_create(SHM_KEY_COMMAND_SET, sizeof(VMS_COMMAND_DATA));
     if (shmid_command_set == -1) return false;
 
-    shmid_connection_set = shm_create(SHM_KEY_SYSTEM_SET, sizeof(CONNECTION_STATUS));
+    shmid_connection_set = shm_create(SHM_KEY_CONNECTION_SET, sizeof(CONNECTION_STATUS));
     if (shmid_connection_set == -1) return false;
 
     shmid_message_data = shm_create(SHM_KEY_MESSAGEDATA, sizeof(MESSAGEDATA));
@@ -233,9 +233,9 @@ BOOL shm_all_open(void)
     if (shmid_system_set == -1) 
         shmid_system_set = shmget(SHM_KEY_SYSTEM_SET, sizeof(SHM_SYSTEM_SET), 0666);
     if (shmid_command_set == -1) 
-        shmid_command_set = shmget(SHM_KEY_SYSTEM_SET, sizeof(VMS_COMMAND_DATA), 0666);
+        shmid_command_set = shmget(SHM_KEY_COMMAND_SET, sizeof(VMS_COMMAND_DATA), 0666);
     if (shmid_connection_set == -1) 
-        shmid_connection_set = shmget(SHM_KEY_SYSTEM_SET, sizeof(CONNECTION_STATUS), 0666);
+        shmid_connection_set = shmget(SHM_KEY_CONNECTION_SET, sizeof(CONNECTION_STATUS), 0666);
     if (shmid_message_data == -1)
         shmid_message_data = shmget(SHM_KEY_MESSAGEDATA, sizeof(MESSAGEDATA), 0666);
     // if (shmid_list_info == -1)
@@ -252,9 +252,10 @@ BOOL shm_all_open(void)
     BOOL ok1 = shm_open(shmid_proc,       SHMID_PROCESS_DATA);
     BOOL ok2 = shm_open(shmid_system_set, SHMID_SYSTEM_SET);
     BOOL ok3 = shm_open(shmid_message_data, SHMID_MESSAGEDATA);
-    // BOOL ok4 = shm_open(shmid_list_info, SHMID_LISTINFO);
-    // return (ok1 && ok2 && ok3 && ok4);
-    return (ok1 && ok2 && ok3);
+    BOOL ok4 = shm_open(shmid_command_set, SHMID_COMMAND_SET);
+    BOOL ok5 = shm_open(shmid_connection_set, SHMID_CONNECTION_SET);
+    // BOOL ok6 = shm_open(shmid_list_info, SHMID_LISTINFO);
+    return (ok1 && ok2 && ok3 && ok4 && ok5);
 }
 
 int shm_close(void)
@@ -264,6 +265,8 @@ int shm_close(void)
     if (proc_shm_ptr   && shmdt(proc_shm_ptr)   != -1){ proc_shm_ptr   = NULL; nReturn++; }
     if (system_set_ptr && shmdt(system_set_ptr) != -1){ system_set_ptr = NULL; nReturn++; }
     if (message_data_ptr && shmdt(message_data_ptr) != -1){ message_data_ptr = NULL; nReturn++; }
+    if (vms_command_ptr && shmdt(vms_command_ptr) != -1){ vms_command_ptr = NULL; nReturn++; }
+    if (connection_status_ptr && shmdt(connection_status_ptr) != -1){ connection_status_ptr = NULL; nReturn++; }
     // if (list_info_ptr && shmdt(list_info_ptr) != -1){ list_info_ptr = NULL; nReturn++; }
     return nReturn;
 #else
@@ -283,6 +286,8 @@ int shm_delete(void)
     if (shmid_proc       != -1 && shmctl(shmid_proc,       IPC_RMID, NULL) != -1) nReturn++;
     if (shmid_system_set != -1 && shmctl(shmid_system_set, IPC_RMID, NULL) != -1) nReturn++;
     if (shmid_message_data != -1 && shmctl(shmid_message_data, IPC_RMID, NULL) != -1) nReturn++;
+    if (shmid_command_set != -1 && shmctl(shmid_command_set, IPC_RMID, NULL) != -1) nReturn++;
+    if (shmid_connection_set != -1 && shmctl(shmid_connection_set, IPC_RMID, NULL) != -1) nReturn++;
     // if (shmid_list_info != -1 && shmctl(shmid_list_info, IPC_RMID, NULL) != -1) nReturn++;
     return nReturn;
 #else

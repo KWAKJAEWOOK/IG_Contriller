@@ -1,0 +1,10 @@
+[INFO][11:52:27.934] IG-Server Manager Start.
+[INFO][11:52:27.937] Scenario Loaded. Total rows: 81
+[DEBUG][11:52:27.939] IG_Server] Try to Connect IP:192.168.172.190, Port:20240
+[DEBUG][11:52:27.985] IG_Server] Connect Success, IP:192.168.172.190, Port:20240
+[DEBUG][11:52:28.086] IG_Server] 서버 리스닝 : 1
+[DEBUG][11:52:28.138] 데이터 수신 성공: 182
+[DEBUG][11:52:28.139] 수신 데이터 초기: 57 00 00 00
+[DEBUG][11:52:28.141] 글로벌 버퍼 길이: 182
+[DEBUG][11:52:28.142] 파싱한 msg_len: 87
+[DEBUG][11:52:28.145] calc_vms_command 함수 실행
