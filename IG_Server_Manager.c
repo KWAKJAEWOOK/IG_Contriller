@@ -402,7 +402,7 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
     const cJSON* json_MsgCount = cJSON_GetObjectItemCaseSensitive(json_root, "MsgCount");
 	if (cJSON_IsNumber(json_MsgCount)) {
 		message_data_ptr->MsgCount = json_MsgCount->valueint;
-		Log_data(LOG_TYPE_SHM, "\nMsgCount: %d", message_data_ptr->MsgCount);
+		Log_data(LOG_TYPE_SHM, "MsgCount: %d", message_data_ptr->MsgCount);
 		// logger_log(LOG_LEVEL_DEBUG, "\nMsgCount: %d", message_data_ptr->MsgCount);
 	}
 	const cJSON* json_Timestamp = cJSON_GetObjectItemCaseSensitive(json_root, "Timestamp");
@@ -435,14 +435,10 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 					message_data_ptr->ApproachTrafficInfo[traffic_info_index].PET = -1;
 				}
 
-				Log_data(LOG_TYPE_SHM, " ApproachTrafficInfo no:%d\n"
-												"   ConflictPos_Lat: %f\n"
-												"   ConflictPos_Lon: %f\n"
-												"   PET: %f"
-											, traffic_info_index
-											, message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lat
-											, message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lon
-											, message_data_ptr->ApproachTrafficInfo[traffic_info_index].PET);
+				Log_data(LOG_TYPE_SHM, " ApproachTrafficInfo no:%d", traffic_info_index);
+				Log_data(LOG_TYPE_SHM, "   ConflictPos_Lat: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lat);
+				Log_data(LOG_TYPE_SHM, "   ConflictPos_Lon: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].ConflictPos.lon);
+				Log_data(LOG_TYPE_SHM, "   PET: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].PET);
 
 				const cJSON* json_PET_Threshold = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "PET_Threshold");
 				if (cJSON_IsNumber(json_PET_Threshold)) {
@@ -460,11 +456,9 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 						safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID, json_HO_ObjectID->valuestring
 							, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID));
 
-						Log_data(LOG_TYPE_SHM, "   HostObject\n"
-												"      ObjectType: %s"
-												"      ObjectID: %s"
-												, message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectType
-												, message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID);
+						Log_data(LOG_TYPE_SHM, "   HostObject");
+						Log_data(LOG_TYPE_SHM, "      ObjectType: %s", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectType);
+						Log_data(LOG_TYPE_SHM, "      ObjectID: %s", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID);
 					}
 					/*
 					todo. 위치 이동 후 주석 제거, 아래꺼 삭제
@@ -495,14 +489,10 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 									message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lon = json_WayPoint_lon->valuedouble;
 									message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].speed = json_WayPoint_speed->valuedouble;
 
-									Log_data(LOG_TYPE_SHM, "            WayPoint no %d\n"
-															"               Lat: %f"
-															"               Lon: %f"
-															"               Speed: %f"
-															, wayPoint_index
-															, message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lat
-															, message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lon
-															, message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].speed);
+									Log_data(LOG_TYPE_SHM, "            WayPoint no %d\n", wayPoint_index);
+									Log_data(LOG_TYPE_SHM, "               Lat: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lat);
+									Log_data(LOG_TYPE_SHM, "               Lon: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lon);
+									Log_data(LOG_TYPE_SHM, "               Speed: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].speed);
 								}
 							}
 							wayPoint_index++;
@@ -521,11 +511,9 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 						safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID, json_RO_ObjectID->valuestring
 							, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID));
 
-						Log_data(LOG_TYPE_SHM, "   RemoteObject\n"
-												"      ObjectType: %s"
-												"      ObjectID: %s"
-												, message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectType
-												, message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID);
+						Log_data(LOG_TYPE_SHM, "   RemoteObject");
+						Log_data(LOG_TYPE_SHM, "      ObjectType: %s", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectType);
+						Log_data(LOG_TYPE_SHM, "      ObjectID: %s", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID);
 					}
 					/*
 					todo. 웨이즈원이 추가해주면 주석 제거하기
@@ -550,14 +538,10 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 									message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lon = json_WayPoint_lon->valuedouble;
 									message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].speed = json_WayPoint_speed->valuedouble;
 
-									Log_data(LOG_TYPE_SHM, "            WayPoint no %d\n"
-															"               Lat: %f"
-															"               Lon: %f"
-															"               Speed: %f"
-															, wayPoint_index
-															, message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lat
-															, message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lon
-															, message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].speed);
+									Log_data(LOG_TYPE_SHM, "            WayPoint no %d\n", wayPoint_index);
+									Log_data(LOG_TYPE_SHM, "               Lat: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lat);
+									Log_data(LOG_TYPE_SHM, "               Lon: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lon);
+									Log_data(LOG_TYPE_SHM, "               Speed: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].speed);
 								}
 							}
 							wayPoint_index++;
@@ -643,7 +627,7 @@ void packet_frame() {
     }
 
     if (bReturn == TRUE && nReadSize > 0) {
-		// if (connection_status_ptr->ig_server_conn == false) { connection_status_ptr->ig_server_conn = true; }	// 데이터 정상 수신 시 통신상태 정상 // todo. 얘 때문에 자꾸 멈춤
+		if (connection_status_ptr->ig_server_conn == false) { connection_status_ptr->ig_server_conn = true; }	// 데이터 정상 수신 시 통신상태 정상
 		g_buffer_len += nReadSize;
 		last_keep_alive_time = time(NULL);
     } else if (bReturn == FALSE) {
@@ -726,16 +710,16 @@ void *do_thread(void * data)	// 100ms 주기로 공유메모리 수신 / 송신
 		if(st_1s_cnt++ >= 9)
 		{
 			st_1s_cnt = 0;
-			// if ((nowtime-last_keep_alive_time) >= 3) {	// 3초 이상 데이터가 안 들어오면
-			// 	logger_log(LOG_LEVEL_ERROR, "3초 이상 수신 데이터 없음. 소켓 해제 및 재연결 시도");
-			// 	close(HandleIndex);
-			// 	HandleIndex = -1;
-			// 	bConnected = FALSE;
-			// }
 		}
 		if(st_5s_cnt++ >= 49)
 		{
 			st_5s_cnt = 0;
+			if ((nowtime-last_keep_alive_time) >= 5) {	// 5초 이상 데이터가 안 들어오면
+				logger_log(LOG_LEVEL_ERROR, "5초 이상 수신 데이터 없음. 소켓 해제 및 재연결 시도");
+				close(HandleIndex);
+				HandleIndex = -1;
+				bConnected = FALSE;
+			}
 		}
 
 		//메시지 큐 대용
