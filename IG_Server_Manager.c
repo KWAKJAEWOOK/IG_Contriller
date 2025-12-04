@@ -372,6 +372,43 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
                 break;
             }
         }
+		Log_data(LOG_TYPE_VMS, "표출 정보 생성: MsgCount: %d, Timestamp: %s\n"
+								"   북쪽(북동쪽) 도로, 교차로 진입 방향 볼라드: msg:%d, spd:%d, pet_gap:%d\n"
+								"   북쪽(북동쪽) 도로, 가드레일 / 지주 타입: msg:%d, spd:%d, pet_gap:%d\n"
+								"   북쪽(북동쪽) 도로, 교차로 진출 방향 볼라드: msg:%d, spd:%d, pet_gap:%d\n\n"
+							
+								"   동쪽(남동쪽) 도로, 교차로 진입 방향 볼라드: msg:%d, spd:%d, pet_gap:%d\n"
+								"   동쪽(남동쪽) 도로, 가드레일 / 지주 타입: msg:%d, spd:%d, pet_gap:%d\n"
+								"   동쪽(남동쪽) 도로, 교차로 진출 방향 볼라드: msg:%d, spd:%d, pet_gap:%d\n\n"
+							
+								"   남쪽(남서쪽) 도로, 교차로 진입 방향 볼라드: msg:%d, spd:%d, pet_gap:%d\n"
+								"   남쪽(남서쪽) 도로, 가드레일 / 지주 타입: msg:%d, spd:%d, pet_gap:%d\n"
+								"   남쪽(남서쪽) 도로, 교차로 진출 방향 볼라드: msg:%d, spd:%d, pet_gap:%d\n\n"
+							
+								"   서쪽(북서쪽) 도로, 교차로 진입 방향 볼라드: msg:%d, spd:%d, pet_gap:%d\n"
+								"   서쪽(북서쪽) 도로, 가드레일 / 지주 타입: msg:%d, spd:%d, pet_gap:%d\n"
+								"   서쪽(북서쪽) 도로, 교차로 진출 방향 볼라드: msg:%d, spd:%d, pet_gap:%d\n\n"
+
+								"   표출장치 밝기 값: %f\n\n"
+							, vms_command_ptr->MsgCount, vms_command_ptr->Timestamp
+
+							, vms_command_ptr->n_in_msg[0], vms_command_ptr->n_in_msg[1], vms_command_ptr->n_in_msg[2]
+							, vms_command_ptr->n_load_msg[0], vms_command_ptr->n_load_msg[1], vms_command_ptr->n_load_msg[2]
+							, vms_command_ptr->n_out_msg[0], vms_command_ptr->n_out_msg[1], vms_command_ptr->n_out_msg[2]
+
+							, vms_command_ptr->e_in_msg[0], vms_command_ptr->e_in_msg[1], vms_command_ptr->e_in_msg[2]
+							, vms_command_ptr->e_load_msg[0], vms_command_ptr->e_load_msg[1], vms_command_ptr->e_load_msg[2]
+							, vms_command_ptr->e_out_msg[0], vms_command_ptr->e_out_msg[1], vms_command_ptr->e_out_msg[2]
+						
+							, vms_command_ptr->s_in_msg[0], vms_command_ptr->s_in_msg[1], vms_command_ptr->s_in_msg[2]
+							, vms_command_ptr->s_load_msg[0], vms_command_ptr->s_load_msg[1], vms_command_ptr->s_load_msg[2]
+							, vms_command_ptr->s_out_msg[0], vms_command_ptr->s_out_msg[1], vms_command_ptr->s_out_msg[2]
+						
+							, vms_command_ptr->w_in_msg[0], vms_command_ptr->w_in_msg[1], vms_command_ptr->w_in_msg[2]
+							, vms_command_ptr->w_load_msg[0], vms_command_ptr->w_load_msg[1], vms_command_ptr->w_load_msg[2]
+							, vms_command_ptr->w_out_msg[0], vms_command_ptr->w_out_msg[1], vms_command_ptr->w_out_msg[2]
+						
+							, vms_command_ptr->brightness);
 	}
 }
 //============================ TCP 연결 관리 =============================
