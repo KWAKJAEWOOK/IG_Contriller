@@ -33,17 +33,16 @@
 time_t nowtime;
 time_t last_keep_alive_time;
 THANDLEINDEX HandleIndex = -1;
-volatile BOOL bConnected = false; // 연결 상태 플래그
 
 //============================== 소소한 헬퍼함수 =============================
-void safe_strcpy(char* dest, cJSON* item, size_t max_len) {	// json 객체에서 문자열 복사할때 버퍼 오버플로우 방지 및 NULL 체크
-    if (cJSON_IsString(item) && (item->valuestring != NULL)) {
-        strncpy(dest, item->valuestring, max_len - 1);
-        dest[max_len - 1] = '\0';
-    } else {
-        dest[0] = '\0';
-    }
-}
+// void safe_strcpy(char* dest, cJSON* item, size_t max_len) {	// json 객체에서 문자열 복사할때 버퍼 오버플로우 방지 및 NULL 체크
+//     if (cJSON_IsString(item) && (item->valuestring != NULL)) {
+//         strncpy(dest, item->valuestring, max_len - 1);
+//         dest[max_len - 1] = '\0';
+//     } else {
+//         dest[0] = '\0';
+//     }
+// }
 
 //========================== 데이터 로깅을 위한 함수 =============================
 #define SPECIFIC_LOG_LIMIT_MB 500	// 각 로그 폴더 최대 용량
@@ -377,7 +376,7 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
 }
 //============================ TCP 연결 관리 =============================
 bool host_connect() {   // 클라이언트로써 연결 시도
-	if (bConnected) { return true; }
+	if (connection_status_ptr->ig_server_conn) { return true; }
 	logger_log(LOG_LEVEL_DEBUG, "IG_Server] Try to Connect IP:%s, Port:%d"
             , system_set_ptr->ig_server_ip
             , system_set_ptr->ig_server_port);
@@ -387,7 +386,7 @@ bool host_connect() {   // 클라이언트로써 연결 시도
 		return false;
 	} else {
 		logger_log(LOG_LEVEL_DEBUG, "IG_Server] Connect Success, IP:%s, Port:%d", &system_set_ptr->ig_server_ip, system_set_ptr->ig_server_port);
-		bConnected = true;
+		connection_status_ptr->ig_server_conn = true;
 		last_keep_alive_time = time(NULL);
     }
 	usleep(100000);  //100ms
@@ -451,10 +450,8 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 					const cJSON* json_HO_ObjectType = cJSON_GetObjectItemCaseSensitive(json_HostObject, "ObjectType");
 					const cJSON* json_HO_ObjectID = cJSON_GetObjectItemCaseSensitive(json_HostObject, "ObjectID");
 					if (cJSON_IsString(json_HO_ObjectType) && cJSON_IsString(json_HO_ObjectID)) {
-						safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectType, json_HO_ObjectType->valuestring
-							, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectType));
-						safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID, json_HO_ObjectID->valuestring
-							, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID));
+						strcpy(message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectType, json_HO_ObjectType->valuestring);
+						strcpy(message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectID, json_HO_ObjectID->valuestring);
 
 						Log_data(LOG_TYPE_SHM, "   HostObject");
 						Log_data(LOG_TYPE_SHM, "      ObjectType: %s", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.ObjectType);
@@ -477,9 +474,10 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 					const cJSON* json_HO_WayPointList = cJSON_GetObjectItemCaseSensitive(json_HostObject, "WayPointList");
 					if (cJSON_IsArray(json_HO_WayPointList)) {
 						Log_data(LOG_TYPE_SHM, "      WayPointList");
-						cJSON* json_WayPoint = NULL;
+						cJSON* json_WayPoint_i = NULL;
 						int wayPoint_index = 0;
-						cJSON_ArrayForEach(json_WayPoint, json_HO_WayPointList) {	// 각 WayPoint 순회하기
+						cJSON_ArrayForEach(json_WayPoint_i, json_HO_WayPointList) {	// 각 WayPoint 순회하기
+							const cJSON* json_WayPoint = cJSON_GetObjectItemCaseSensitive(json_WayPoint_i, "WayPoint");
 							if (json_WayPoint){	// "WayPointList":[]처럼 빈 리스트일 수 있으니까
 								const cJSON* json_WayPoint_lat = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "lat");
 								const cJSON* json_WayPoint_lon = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "lon");
@@ -489,7 +487,7 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 									message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lon = json_WayPoint_lon->valuedouble;
 									message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].speed = json_WayPoint_speed->valuedouble;
 
-									Log_data(LOG_TYPE_SHM, "            WayPoint no %d\n", wayPoint_index);
+									Log_data(LOG_TYPE_SHM, "            WayPoint no %d", wayPoint_index);
 									Log_data(LOG_TYPE_SHM, "               Lat: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lat);
 									Log_data(LOG_TYPE_SHM, "               Lon: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].lon);
 									Log_data(LOG_TYPE_SHM, "               Speed: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].HostObject.WayPoint[wayPoint_index].speed);
@@ -503,13 +501,11 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 				}
 				const cJSON* json_RemoteObject = cJSON_GetObjectItemCaseSensitive(json_ApproachTrafficInfo, "RemoteObject");	// RO 파싱
 				if (json_RemoteObject && cJSON_IsObject(json_RemoteObject)) {	// 얜 없을수도있음
-					const cJSON* json_RO_ObjectType = cJSON_GetObjectItemCaseSensitive(json_HostObject, "ObjectType");
-					const cJSON* json_RO_ObjectID = cJSON_GetObjectItemCaseSensitive(json_HostObject, "ObjectID");
+					const cJSON* json_RO_ObjectType = cJSON_GetObjectItemCaseSensitive(json_RemoteObject, "ObjectType");
+					const cJSON* json_RO_ObjectID = cJSON_GetObjectItemCaseSensitive(json_RemoteObject, "ObjectID");
 					if (cJSON_IsString(json_RO_ObjectType) && cJSON_IsString(json_RO_ObjectID)) {
-						safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectType, json_RO_ObjectType->valuestring
-							, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectType));
-						safe_strcpy(&message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID, json_RO_ObjectID->valuestring
-							, sizeof(message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID));
+						strcpy(message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectType, json_RO_ObjectType->valuestring);
+						strcpy(message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectID, json_RO_ObjectID->valuestring);
 
 						Log_data(LOG_TYPE_SHM, "   RemoteObject");
 						Log_data(LOG_TYPE_SHM, "      ObjectType: %s", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.ObjectType);
@@ -526,9 +522,10 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 					const cJSON* json_RO_WayPointList = cJSON_GetObjectItemCaseSensitive(json_RemoteObject, "WayPointList");
 					if (cJSON_IsArray(json_RO_WayPointList)) {
 						Log_data(LOG_TYPE_SHM, "      WayPointList");
-						cJSON* json_WayPoint = NULL;
+						cJSON* json_WayPoint_i = NULL;
 						int wayPoint_index = 0;
-						cJSON_ArrayForEach(json_WayPoint, json_RO_WayPointList) {	// 각 WayPoint 순회하기
+						cJSON_ArrayForEach(json_WayPoint_i, json_RO_WayPointList) {	// 각 WayPoint 순회하기
+							const cJSON* json_WayPoint = cJSON_GetObjectItemCaseSensitive(json_WayPoint_i, "WayPoint");
 							if (json_WayPoint){	// "WayPointList":[]처럼 빈 리스트일 수 있으니까
 								const cJSON* json_WayPoint_lat = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "lat");
 								const cJSON* json_WayPoint_lon = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "lon");
@@ -538,7 +535,7 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 									message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lon = json_WayPoint_lon->valuedouble;
 									message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].speed = json_WayPoint_speed->valuedouble;
 
-									Log_data(LOG_TYPE_SHM, "            WayPoint no %d\n", wayPoint_index);
+									Log_data(LOG_TYPE_SHM, "            WayPoint no %d", wayPoint_index);
 									Log_data(LOG_TYPE_SHM, "               Lat: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lat);
 									Log_data(LOG_TYPE_SHM, "               Lon: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].lon);
 									Log_data(LOG_TYPE_SHM, "               Speed: %f", message_data_ptr->ApproachTrafficInfo[traffic_info_index].RemoteObject.WayPoint[wayPoint_index].speed);
@@ -637,7 +634,7 @@ void packet_frame() {
             logger_log(LOG_LEVEL_INFO, "IG_Server] Disconnected by Server/Network.");
             CommClose(HandleIndex);
             HandleIndex = -1;
-            bConnected = FALSE;
+            connection_status_ptr->ig_server_conn = false;
         }
 	}
 	process_parsing();  // 글로벌 버퍼에 쌓인 데이터 파싱 시도
@@ -716,9 +713,7 @@ void *do_thread(void * data)	// 100ms 주기로 공유메모리 수신 / 송신
 			st_5s_cnt = 0;
 			if ((nowtime-last_keep_alive_time) >= 5) {	// 5초 이상 데이터가 안 들어오면
 				logger_log(LOG_LEVEL_ERROR, "5초 이상 수신 데이터 없음. 소켓 해제 및 재연결 시도");
-				close(HandleIndex);
-				HandleIndex = -1;
-				bConnected = FALSE;
+				connection_status_ptr->ig_server_conn = false;
 			}
 		}
 
@@ -804,13 +799,19 @@ int main()
 	while (1)
 	{
 		usleep(50000);  //50ms
-		if(bConnected == false) {
-			connection_status_ptr->ig_server_conn = false;
+		if(connection_status_ptr->ig_server_conn == false) {
+			if (HandleIndex != -1) {	// 재연결해야되는데 소켓이 살아있으면
+                logger_log(LOG_LEVEL_INFO, "IG_Server] Cleaning up old socket handle: %d", HandleIndex);
+                CommClose(HandleIndex);
+                HandleIndex = -1;
+            }
             static time_t last_retry = 0;
             time_t current_time = time(NULL);
+			bool Return_re;
             if (current_time - last_retry > 3) { // 3초마다 재시도
                 // printf("IG_Server] Retrying connection...\n");
-                host_connect();
+                Return_re = host_connect();
+				logger_log(LOG_LEVEL_DEBUG, "IG_Server] 서버 리스닝 : %d", Return_re);
                 last_retry = current_time;
             }
 		} else {
