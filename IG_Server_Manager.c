@@ -63,6 +63,8 @@ int convert_dircode_to_count(int dircode) {	// CVIBDircode를 scenario.csv에 �
 			return 4;
 		case 80:
 			return 4;
+		case 0:
+			return 0;
 	}
 }
 
@@ -371,6 +373,14 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
             speed_i = (int)(message_data_ptr->ApproachTrafficInfo[i].HostObject.WayPoint[0].speed);
         }	// 없으면 0으로 두기
 
+		Log_data(LOG_TYPE_VMS, "진입/진출 방향 추정 결과\n"
+								"   MsgCount: %d | ApproachTrafficInfo no: %d\n"
+								"   HO 진입: %d\n"
+								"   HO 진출: %d\n"
+								"   RO 진입: %d"
+								, vms_command_ptr->MsgCount, i
+								, ho_entry_i, ho_egress_i, ro_entry_i);
+
 		// todo. 시나리오랑 매칭
 		for (int j = 0; j < g_scenario_count; j++) {
             SCENARIO_ROW *row_j = &g_scenario_table[j];
@@ -378,6 +388,10 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
                 row_j->ho_egress == convert_dircode_to_count(ho_egress_i) && 
                 row_j->ro_entry == convert_dircode_to_count(ro_entry_i)) {	// 지금 시나리오 csv에서는 숫자순서대로 1234로 들어가있음
                 
+				logger_log(LOG_LEVEL_DEBUG, "시나리오 CSV 파일과 매칭한 결과: \n"
+											"매칭 idx: %d\n"
+											"ho_entry_i = %d, ho_egress_i = %d, ro_entry_i = %d"
+											, j+1, ho_entry_i, ho_egress_i, ro_entry_i);
                 // 매칭된 시나리오의 메시지 ID를 각 그룹에 업데이트
                 update_vms_group(vms_command_ptr->n_in_msg, row_j->n_in, speed_i, PETGap_i);
                 update_vms_group(vms_command_ptr->n_load_msg, row_j->n_load, speed_i, PETGap_i);
@@ -453,7 +467,7 @@ bool host_connect() {   // 클라이언트로써 연결 시도
 }
 //============================ TCP 수신 함수 =============================
 #define MAX_RECV_BUFFER_SIZE (1024 * 16)	// 한번에 최대 16kb
-static uint8_t g_recv_buffer[MAX_RECV_BUFFER_SIZE * 10];	// 글로벌 버퍼
+static uint8_t g_recv_buffer[MAX_RECV_BUFFER_SIZE * 10];	// 글로벌 버퍼, MAX_RECV_BUFFER_SIZE의 10배
 static size_t g_buffer_len = 0;
 
 static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 객체 파싱 및 공유메모리에 업데이트
