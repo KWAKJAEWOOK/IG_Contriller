@@ -5,6 +5,18 @@ CFLAGS := -O2 -Wall -Wextra -std=gnu11 $(INC)
 LDFLAGS := -pthread
 LIBS    := -lrt -lm
 
+LOG_DIR_CONNMNG  := exe/Logs/Connection_Manager_Log
+LOG_DIR_IGSERVER := exe/Logs/IG_Server_Manager_Log
+LOG_DIR_LEDMNG   := exe/Logs/LED_Manager_Log
+LOG_DIR_M30MNG   := exe/Logs/M30_Manager_Log
+LOG_DIR_RAWDATA  := $(LOG_DIR_IGSERVER)/RawData
+LOG_DIR_SHMDATA  := $(LOG_DIR_IGSERVER)/ShmData
+LOG_DIR_VMSCMD   := $(LOG_DIR_IGSERVER)/VmsCmd
+
+
+LOG_DIRS := $(LOG_DIR_CONNMNG) $(LOG_DIR_IGSERVER) $(LOG_DIR_LEDMNG) $(LOG_DIR_M30MNG) \
+			$(LOG_DIR_RAWDATA) $(LOG_DIR_SHMDATA) $(LOG_DIR_VMSCMD)
+
 SRC_COMMON := global/shm_func.c \
               global/msg_func.c \
               global/CommData.c \
@@ -36,7 +48,7 @@ TARGETS := start.out \
 		   BH1750_Manager.out \
            end.out
 
-.PHONY: all postcopy clean
+.PHONY: all postcopy clean clean-logs
 
 all: $(TARGETS) postcopy
 
@@ -70,3 +82,6 @@ postcopy: $(TARGETS)
 
 clean:
 	rm -f *.o global/*.o *.out exe/*.out
+
+clean-logs:
+	rm -f $(foreach d,$(LOG_DIRS),$(d)/*.log)

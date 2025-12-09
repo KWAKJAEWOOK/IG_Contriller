@@ -388,10 +388,10 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
                 row_j->ho_egress == convert_dircode_to_count(ho_egress_i) && 
                 row_j->ro_entry == convert_dircode_to_count(ro_entry_i)) {	// 지금 시나리오 csv에서는 숫자순서대로 1234로 들어가있음
                 
-				logger_log(LOG_LEVEL_DEBUG, "시나리오 CSV 파일과 매칭한 결과: \n"
-											"매칭 idx: %d\n"
-											"ho_entry_i = %d, ho_egress_i = %d, ro_entry_i = %d"
-											, j+1, ho_entry_i, ho_egress_i, ro_entry_i);
+				// logger_log(LOG_LEVEL_DEBUG, "시나리오 CSV 파일과 매칭한 결과: \n"
+				// 							"매칭 idx: %d\n"
+				// 							"ho_entry_i = %d, ho_egress_i = %d, ro_entry_i = %d"
+				// 							, j+1, ho_entry_i, ho_egress_i, ro_entry_i);
                 // 매칭된 시나리오의 메시지 ID를 각 그룹에 업데이트
                 update_vms_group(vms_command_ptr->n_in_msg, row_j->n_in, speed_i, PETGap_i);
                 update_vms_group(vms_command_ptr->n_load_msg, row_j->n_load, speed_i, PETGap_i);

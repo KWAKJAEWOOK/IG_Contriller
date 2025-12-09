@@ -168,9 +168,10 @@ void *do_thread(void *data) {
     }
 }
 // ============================ 기능 구현 함수들 ============================
-// todo. 기본 표출 씬 패킷 전송 ($SEEN:09)
-// todo. vms_command_ptr 내부 값을 확인하고, 차량들의 주행 경로를 제외한 LED들의 표출을 검은색으로 바꾸는 함수
-// todo. vms_command_ptr 내부 값을 확인하고, 상충이 예상되는 지점의 부분에 붉은색->검은색 점멸 표출 함수 (PET 값이 작으면 작을수록 빠르게 점멸)
+// todo. LED 전체 기본 표출 씬 패킷 전송 ($SEEN:09)
+// todo. dimmer 인덱스를 4개로 나누기 (교차로 진입/진출 도로 사이)
+// todo. vms_command_ptr 내부 값을 확인하고, $IDXSET을 순회하며 차량들의 주행 경로를 제외한 LED들의 표출을 검은색으로 설정하는 함수
+// todo. vms_command_ptr 내부 값을 확인하고, 상충이 예상되는 지점에 IDXSET으로 붉은색->검은색 점멸 표출 함수 (PET 값이 작으면 작을수록 빠르게 점멸)
 // todo. 응답이 없으면 connection_status_ptr 연결상태에 기록하고, 재연결 시도
 /*
 패킷: $IDXSET:XXXXXXXXXXXX [XXX(dimmer ID: 001~999), XXX(RED: 0~255), XXX(GREEN: 0~255), XXX(BLUE: 0~255)]
@@ -216,7 +217,7 @@ int main() {
 
         if (bConnected == false) {
             static time_t last_retry = 0;
-            if (nowtime - last_retry > 3) { // 3초마다 재접속 시도
+            if (nowtime - last_retry > 3) { // 너무 자주 연결 시도 안하기
                 host_connect();
                 last_retry = nowtime;
             }
