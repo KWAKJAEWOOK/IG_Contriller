@@ -65,26 +65,19 @@ M30_CONTEXT* g_group_map[TOTAL_GROUPS][5]; // [그룹ID][인덱스]
 
 typedef struct {    // 애니메이션 스레드 딜레이를 위한 구조체
     // 순차 표출
-    int count;              // 틱에 따른 카운터
+    int wave_count; // 틱에 따른 카운터
     int wave_idx;   // 다음에 바꿔야될 장치 인덱스
-    bool need_on;   // 꺼야될지 켜야될지 정함
+    bool wave_phase;   // 꺼야될지 켜야될지 정함
 
-    // 상충 표출 (필요하면 추가하고 바꾸기)
+    // 상충 표출
+    int blink_count;    // 틱에 따른 카운터
+    bool blink_phase;   // 꺼야될지 켜야될지 정함
 } ANIME_STATUS;
 ANIME_STATUS g_group_anim[TOTAL_GROUPS];
 
 time_t nowtime;
 struct timeval tv_now;
 
-// Ctrl+C 핸들러
-void handle_sigint(int sig) {
-    printf("\nM30_Manager Terminating... (Signal: %d)\n", sig);
-    for(int i=0; i<g_m30_count; i++) {
-        if(g_m30_devs[i].handle != -1) CommClose(g_m30_devs[i].handle);
-    }
-    if (shm_close() != 0) printf("shm_close() failed\n");
-    exit(0);
-}
 
 // ============================ 유틸리티 함수 ============================
 long long current_timestamp_ms() {  // 애니메이션용 타임스탬프 기록
@@ -114,6 +107,15 @@ int make_m30_packet(uint8_t *buf, uint8_t type, const char *data_str) { // 패�
     idx++;
     buf[idx++] = 0x03; // ETX
     return idx; // 총 길이
+}
+
+void handle_sigint(int sig) {   // Ctrl+C 핸들러
+    printf("\nM30_Manager Terminating... (Signal: %d)\n", sig);
+    for(int i=0; i<g_m30_count; i++) {
+        if(g_m30_devs[i].handle != -1) CommClose(g_m30_devs[i].handle);
+    }
+    if (shm_close() != 0) printf("shm_close() failed\n");
+    exit(0);
 }
 
 // ============================ 초기화 ============================
@@ -262,52 +264,65 @@ void send_m30_brightness(M30_CONTEXT *ctx, int level) {
 }
 
 // ============================ 표출 로직 (애니메이션) ============================
-void process_group_logic(int grp_id, int msg_id, int speed, int pet_gap) {  // 특정 그룹의 메시지 인덱스를 읽고 적절한 표출 명령 전송
-    if (g_group_dev_cnt[grp_id] == 0) return;   // 그룹에 M30장치가 없으면
+void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) {  // 특정 그룹의 메시지 인덱스를 읽고 적절한 표출 명령 전송
+    if (g_group_dev_cnt[grp_idx] == 0) return;   // 그룹이 없으면 바로 리턴
 
-    long long now_ms = current_timestamp_ms();
-
-    for (int i = 0; i < g_group_dev_cnt[grp_id]; i++) {
-        M30_CONTEXT *ctx = g_group_map[grp_id][i];
+    for (int i = 0; i < g_group_dev_cnt[grp_idx]; i++) { // 해당 그룹의 개별 장치마다 순회
+        M30_CONTEXT *ctx = g_group_map[grp_idx][i];
         if (!ctx) continue;
 
         char command_str[256];
         bool turn_on = false;
-        
+
         if (msg_id == 0) {  // 0번 이미지 표출
             turn_on = false;
         }
+
         if (msg_id == 1) { // 단독주행
             // speed 값을 틱 단위로 (50ms 배수)
             int spd_val = (speed <= 0) ? 1 : speed;
             int delay_ticks = 11 - spd_val;
-            if (delay_ticks < 1) delay_ticks = 1;   // 가장 빠르면 50ms 주기
+            if (delay_ticks < 1) delay_ticks = 1;   // 가장 빠르면 50ms 주기 (process_group_logic 1회 실행 시마다)
             if (delay_ticks > 10) delay_ticks = 10; // 느리면 500ms 주기
-            
-            if (g_group_anim[grp_id].count == 0) {  // 틱이 돌면
-                if (g_group_anim[grp_id].wave_idx == i) {   // 뿌려야되는 장치에
-                    turn_on = g_group_anim[grp_id].need_on;
-                    if (i == g_group_dev_cnt[grp_id]) { // 켜고 끄는 플래그 바꾸기
-                        g_group_anim[grp_id].need_on = turn_on?false:true;
-                    }
-                }
+
+            if ((g_group_anim[grp_idx].wave_idx == 0) && (g_group_anim[grp_idx].wave_count == 0)) {  // 첫 웨이브 시작이거나, 돌아오는 웨이브일 때
+                g_group_anim[grp_idx].wave_phase = !g_group_anim[grp_idx].wave_phase;   // 끄고 켜는 플래그 반전
             }
-            g_group_anim[grp_id].count = (g_group_anim[grp_id].count+1) % delay_ticks;
-            g_group_anim[grp_id].wave_idx = (i+1) % g_group_dev_cnt[grp_id];    // 이 그룹의 마지막 장치 인덱스까지 실행되게
-        } else {    // 메시지 인덱스가 1이 아니면 초기화
-            g_group_anim[grp_id].count = 0;
-            g_group_anim[grp_id].wave_idx = 0;
-            g_group_anim[grp_id].need_on = true;
-        }
-        if (msg_id == 2) { // 상충경고
-            int interval = (pet_gap <= 0) ? 500 : pet_gap;
-            if (interval < 200) interval = 200; // 최소 주기 제한
-            if (interval > 1000) interval = 1000;
-            int phase = (now_ms / interval) % 2;
-            turn_on = (phase == 0); // 0일때 ON, 1일때 OFF
+            if (i == g_group_dev_cnt[grp_idx]-1) { // 이 그룹을 다 돌았으면 wave_count 올리기
+                g_group_anim[grp_idx].wave_count = (g_group_anim[grp_idx].wave_count+1) % delay_ticks;
+            }
+            if (g_group_anim[grp_idx].wave_count == 0) {    // 틱이 차면 보내야할 장치에 표출 설정
+                if (i == g_group_anim[grp_idx].wave_idx) {
+                    turn_on = g_group_anim[grp_idx].wave_phase; // 표출 설정
+                    g_group_anim[grp_idx].wave_idx = (g_group_anim[grp_idx].wave_idx+1) % g_group_dev_cnt[grp_idx]; // 다음 표출할 장치 인덱스 설정
+                } else { continue; }    // 표출할 장치가 아니면 스킵
+            }
+        } else {    // 단독주행이 아니면 초기화
+            g_group_anim[grp_idx].wave_count = 0;
+            g_group_anim[grp_idx].wave_idx = 0;
+            g_group_anim[grp_idx].wave_phase = false;
         }
 
-        // 패킷 내용 구성 (TXT/USM)
+        if (msg_id == 2) { // 상충경고
+            int pet_ticks = (pet_gap <= 0) ? 1 : pet_gap;
+            if (pet_ticks < 1) pet_ticks = 1;   // 가장 빠르면 50ms 주기
+            if (pet_ticks > 10) pet_ticks = 10; // 느리면 500ms 주기
+
+            if (g_group_anim[grp_idx].blink_count == 0) {  // 첫 웨이브 시작이거나, 돌아오는 웨이브일 때
+                g_group_anim[grp_idx].blink_phase = !g_group_anim[grp_idx].blink_phase; // 표출 위상 반전
+            }
+            if (i == g_group_dev_cnt[grp_idx]-1) { // 이 그룹을 다 돌았으면 wave_count 올리기
+                g_group_anim[grp_idx].blink_count = (g_group_anim[grp_idx].blink_count+1) % pet_ticks;
+            }
+            if (g_group_anim[grp_idx].wave_count == 0) {    // 틱이 차면 전체 장치에 표출 설정
+                turn_on = g_group_anim[grp_idx].blink_phase;
+            }
+        } else {    // 상충이 아니면 초기화
+            g_group_anim[grp_idx].blink_count = 0;
+            g_group_anim[grp_idx].blink_phase = false;
+        }
+
+        // 패킷 전송
         if (turn_on) {
             if (msg_id == 1) {
                 snprintf(command_str, sizeof(command_str), "RST=1 USM=001");

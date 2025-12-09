@@ -456,6 +456,7 @@ bool host_connect() {   // 클라이언트로써 연결 시도
 	HandleIndex = CommInit(CONNECT, &system_set_ptr->ig_server_ip, system_set_ptr->ig_server_port, true);
 	if (HandleIndex == -1) {
 		logger_log(LOG_LEVEL_ERROR, "IG_Server] Connect Fail, IP:%s, Port:%d", &system_set_ptr->ig_server_ip, system_set_ptr->ig_server_port);
+		connection_status_ptr->ig_server_conn = false;
 		return false;
 	} else {
 		logger_log(LOG_LEVEL_DEBUG, "IG_Server] Connect Success, IP:%s, Port:%d", &system_set_ptr->ig_server_ip, system_set_ptr->ig_server_port);
@@ -467,7 +468,7 @@ bool host_connect() {   // 클라이언트로써 연결 시도
 }
 //============================ TCP 수신 함수 =============================
 #define MAX_RECV_BUFFER_SIZE (1024 * 16)	// 한번에 최대 16kb
-static uint8_t g_recv_buffer[MAX_RECV_BUFFER_SIZE * 10];	// 글로벌 버퍼, MAX_RECV_BUFFER_SIZE의 10배
+static uint8_t g_recv_buffer[MAX_RECV_BUFFER_SIZE * 10];	// 글로벌 버퍼, 대충 MAX_RECV_BUFFER_SIZE의 10배
 static size_t g_buffer_len = 0;
 
 static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 객체 파싱 및 공유메모리에 업데이트
@@ -824,7 +825,7 @@ void handle_sigint(int sig) {	// Ctrl+C 종료 처리 핸들러
 int main()
 {
 	int i;
-	bool bReturn;
+	// bool bReturn;
 
 	if (logger_init("Logs/IG_Server_Manager_Log", 100) != 0) {	// 로거 테스트용 100mb
 		logger_log(LOG_LEVEL_ERROR, "Logger init failed");
@@ -864,8 +865,8 @@ int main()
 		exit(EXIT_FAILURE);
 	}
 
-	bReturn = host_connect();	// IG-Server와 연결
-	logger_log(LOG_LEVEL_DEBUG, "IG_Server] 서버 리스닝 : %d", bReturn);
+	// bReturn = host_connect();	// IG-Server와 연결
+	// logger_log(LOG_LEVEL_DEBUG, "IG_Server] 서버 리스닝 : %d", bReturn);
 
 	nowtime = time(NULL);	// 재연결 타임아웃 검지를 위한 현재시간 초기화
 

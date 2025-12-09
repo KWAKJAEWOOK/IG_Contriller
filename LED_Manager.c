@@ -15,6 +15,8 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <sys/time.h>
+#include <stdarg.h>
 
 #include "global/global.h"
 #include "global/shm_type.h"
@@ -33,71 +35,112 @@ volatile BOOL bConnected = false;
 static uint8_t g_recv_buffer[MAX_RECV_BUFFER_SIZE];
 static size_t g_buffer_len = 0;
 
-// Ctrl+C 핸들러
-void handle_sigint(int sig) {
+// dimmer 그룹 설정
+int g_dimmer_n[] = { 1, 2, 3, 4, 5 };       // 북->동
+int g_dimmer_e[] = { 6, 7, 8, 9, 10 };      // 동->남
+int g_dimmer_s[] = { 11, 12, 13, 14, 15 };  // 남->서
+int g_dimmer_w[] = { 16, 17, 18, 19, 20 };  // 서->북
+const int count_n_group = (sizeof(g_dimmer_n)/sizeof(int));  // 그룹 개수
+const int count_e_group = (sizeof(g_dimmer_e)/sizeof(int));
+const int count_s_group = (sizeof(g_dimmer_s)/sizeof(int));
+const int count_w_group = (sizeof(g_dimmer_w)/sizeof(int));
+
+typedef struct {
+    char last_msg[128];
+    int last_pet_gap;
+} GROUP_STATE;
+GROUP_STATE g_state[4]; // n, e, s, w
+
+//========================= 소소한 헬퍼 함수 =========================
+
+void handle_sigint(int sig) {   // Ctrl+C 핸들러
     printf("\nLED_Manager Terminating... (Signal: %d)\n", sig);
     if (shm_close() != 0) printf("shm_close() failed\n");
     if (HandleIndex != -1) CommClose(HandleIndex);
     exit(0);
 }
 
+
+long long current_timestamp_ms() {  // 애니메이션용 타임스탬프 기록
+    struct timeval te;
+    gettimeofday(&te, NULL);
+    return te.tv_sec * 1000LL + te.tv_usec / 1000;
+}
 // ============================ 연결 관리 ============================
 bool host_connect() {
-    if (bConnected) return true;
-    // 공유메모리 설정값 확인
-    if (strlen(system_set_ptr->led_ip) == 0 || system_set_ptr->led_port == 0) {
-        // IP 설정이 아직 안되었거나 비어있으면 대기
-        return false; 
-    }
+    if (connection_status_ptr->led_conn) { return true; }
     logger_log(LOG_LEVEL_DEBUG, "LED_Mgr] Try to Connect IP:%s, Port:%d", 
                system_set_ptr->led_ip, system_set_ptr->led_port);
     HandleIndex = CommInit(CONNECT, system_set_ptr->led_ip, system_set_ptr->led_port, true);
     if (HandleIndex == -1) {
-        logger_log(LOG_LEVEL_ERROR, "LED_Mgr] Connect Fail");
+        logger_log(LOG_LEVEL_ERROR, "LED_Mgr] Connect Fail: IP:%s, Port:%d", 
+               system_set_ptr->led_ip, system_set_ptr->led_port);
+        connection_status_ptr->led_conn = false;
         return false;
     } else {
-        logger_log(LOG_LEVEL_INFO, "LED_Mgr] Connect Success");
-        bConnected = true;
+        logger_log(LOG_LEVEL_INFO, "LED_Mgr] Connect Success: IP:%s, Port:%d", 
+               system_set_ptr->led_ip, system_set_ptr->led_port);
+        connection_status_ptr->led_conn = true;
         last_keep_alive_time = time(NULL);
     }
-    usleep(100000); 
+    usleep(100000);   //100ms
     return true;
 }
 
 // ============================ 데이터 처리 ============================
-// LED 장비 프로토콜에 맞게 파싱 로직 구현 필요
-void process_parsing() {
-    // 예시: 간단히 버퍼 비우기 (실제 구현 시 프로토콜에 맞춰 수정)
-    if (g_buffer_len > 0) {
-        // printf("LED Recv: %d bytes\n", (int)g_buffer_len);
-        g_buffer_len = 0; // 데이터 처리 완료 가정
+#define RECV_BUF_SIZE 2048
+uint8_t g_recv_buf[RECV_BUF_SIZE];
+size_t g_buf_len = 0;
+void packet_frame() {   // 응답 수신
+    if (!connection_status_ptr->led_conn || HandleIndex == -1) { return; }
+    int nRead = 0;
+    size_t space = RECV_BUF_SIZE - g_buf_len;
+    if (space == 0) { g_buf_len = 0; space = RECV_BUF_SIZE; } // 버퍼 꽉차면 초기화
+    BOOL res = RecvBuf(HandleIndex, (char*)(g_recv_buf + g_buf_len), space, &nRead, 0);
+
+    if (res == TRUE && nRead > 0) {
+        if (connection_status_ptr->ig_server_conn == false) { connection_status_ptr->ig_server_conn = true; }	// 데이터 정상 수신 시 통신상태 정상
+        last_keep_alive_time = time(NULL);
+        g_buf_len += nRead;
+        // 필요하면 $OK 등 응답 내용 확인
+        g_buf_len = 0; // 그냥 비우기
+    } else if (res == FALSE) {
+        int err = GetLastCommError();
+        if (err == DISCONNECTED || (nRead == 0 && err != TIME_OUT)) {
+            logger_log(LOG_LEVEL_WARN, "LED_Mgr] LED Disconnected");
+            CommClose(HandleIndex);
+            HandleIndex = -1;
+            connection_status_ptr->led_conn = false;
+        }
     }
 }
 
-void packet_frame() {
-    int nReadSize = 0;
-    BOOL bReturn;
-    size_t free_space = MAX_RECV_BUFFER_SIZE - g_buffer_len;
-    if (free_space == 0) {
-        g_buffer_len = 0; // Overflow 방지 리셋
-        free_space = MAX_RECV_BUFFER_SIZE;
+int make_led_packet(uint8_t *buf, const char *data_str) { // 패킷 헤더랑 \r, \n 추가해주는 헬퍼
+    int data_len = strlen(data_str);
+    int idx = 0;
+    buf[idx++] = 0x24; // $
+    memcpy(&buf[idx], data_str, data_len); // Data
+    idx += data_len;
+    buf[idx++] = 0x0D; // \r
+    buf[idx++] = 0x0A; // \n
+    return idx; // 총 길이
+}
+void send_led_packet(GROUP_STATE state, const char* data_content) {    // 경관조명에 패킷 전송
+    if (!connection_status_ptr->led_conn || HandleIndex == -1) { return; }
+    if (strcmp(state.last_msg, data_content) == 0) {    // 변경된 내용이 없으면 안보냄
+        // logger_log(LOG_LEVEL_DEBUG, "skipping msg %s[%s]-> msg: %s = %s", ctx->name, ctx->ip, ctx->last_sent_packet_data, data_content);
+        return;
     }
-    if (HandleIndex != -1) {
-        // 논블로킹 수신 (WaitSec = 0)
-        bReturn = RecvBuf(HandleIndex, (char *)(g_recv_buffer + g_buffer_len), free_space, &nReadSize, 0);
-    }
-    if (bReturn == TRUE && nReadSize > 0) {
-        g_buffer_len += nReadSize;
-        last_keep_alive_time = time(NULL);
-        process_parsing();
-    } else if (bReturn == FALSE) {
-        int err = GetLastCommError();
-        if (err == DISCONNECTED || (nReadSize == 0 && err != TIME_OUT)) {
-            logger_log(LOG_LEVEL_WARN, "LED_Mgr] Disconnected.");
-            CommClose(HandleIndex);
-            HandleIndex = -1;
-            bConnected = FALSE;
-        }
+    uint8_t packet[1024];
+    int len = make_led_packet(packet, data_content);
+    if (SendBuf(HandleIndex, (char*)packet, len)) {
+        logger_log(LOG_LEVEL_DEBUG, "Sent %s", data_content);
+        strncpy(state.last_msg, data_content, sizeof(state.last_msg));
+    } else {
+        logger_log(LOG_LEVEL_WARN, "Send Fail %s", data_content);
+        CommClose(HandleIndex); // 전송 실패 시 연결 끊음
+        HandleIndex = -1;
+        connection_status_ptr->led_conn = false;
     }
 }
 // ============================ 메시지 큐 처리 ============================
@@ -139,12 +182,6 @@ void *do_thread(void *data) {
 		if(st_1s_cnt++ >= 9)
 		{
 			st_1s_cnt = 0;
-			// if ((nowtime-last_keep_alive_time) >= 1) {	// 1초 이상 데이터가 안 들어오면
-			// 	logger_log(LOG_LEVEL_ERROR, "1초 이상 수신 데이터 없음. 소켓 해제 및 재연결 시도");
-			// 	close(HandleIndex);
-			// 	HandleIndex = -1;
-			// 	bConnected = FALSE;
-			// }
 		}
 		if(st_5s_cnt++ >= 49)
 		{
@@ -213,18 +250,31 @@ int main() {
     nowtime = time(NULL);
 
     while (1) {
-        usleep(10000); // 10ms
-
-        if (bConnected == false) {
-            static time_t last_retry = 0;
-            if (nowtime - last_retry > 3) { // 너무 자주 연결 시도 안하기
-                host_connect();
-                last_retry = nowtime;
+        usleep(50000);  //50ms
+        if (connection_status_ptr->led_conn == false) {
+            if (HandleIndex != -1) {	// 재연결해야되는데 소켓이 살아있으면
+                logger_log(LOG_LEVEL_INFO, "LED_Mgr] Cleaning up old socket handle: %d", HandleIndex);
+                CommClose(HandleIndex);
+                HandleIndex = -1;
             }
-        } else {
-            packet_frame();
-        }
-    }
+            static time_t last_retry = 0;
+            time_t current_time = time(NULL);
+			bool Return_re;
+            if (current_time - last_retry > 3) { // 3초마다 재시도
+                Return_re = host_connect();
+				logger_log(LOG_LEVEL_DEBUG, "LED_Mgr] 서버 리스닝 : %d", Return_re);
+                last_retry = current_time;
+            }
+		} else {
+			packet_frame();
+		}
+	}
 
-    return 0;
+	if (shm_close() != 0)
+	{
+		logger_log(LOG_LEVEL_ERROR, "LED_Mgr]  shm_close() failed\n");
+		exit(-1);
+	}
+
+	return 0;
 }
