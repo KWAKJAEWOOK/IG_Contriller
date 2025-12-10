@@ -264,7 +264,7 @@ void send_m30_brightness(M30_CONTEXT *ctx, int level) {
 }
 
 // ============================ 표출 로직 (애니메이션) ============================
-// void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) {  // 특정 그룹의 메시지 인덱스를 읽고 적절한 표출 명령 전송 (내가짠거)
+// void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) {  // 특정 그룹의 메시지 인덱스를 읽고 적절한 표출 명령 전송
 //     if (g_group_dev_cnt[grp_idx] == 0) return;   // 그룹이 없으면 바로 리턴
 
 //     for (int i = 0; i < g_group_dev_cnt[grp_idx]; i++) { // 해당 그룹의 개별 장치마다 순회
@@ -339,23 +339,19 @@ void send_m30_brightness(M30_CONTEXT *ctx, int level) {
 
 void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) {
     if (g_group_dev_cnt[grp_idx] == 0) return; // 그룹이 없으면 리턴
-    // ---------------------------------------------------------
-    // 1. 단독주행 (Msg ID: 1) - 순차 점등 후 순차 소등 반복
-    // ---------------------------------------------------------
+
     if (msg_id == 1) {
-        // 속도 계산 (값이 클수록 빠름 -> delay_ticks 작아짐)
+        // todo. 주기 계산 함수는 현장 테스트로 조절하기
         int spd_val = (speed <= 0) ? 1 : speed;
         int delay_ticks = 11 - spd_val;
         if (delay_ticks < 1) delay_ticks = 1;
-        // [애니메이션 상태 업데이트] - 반복문 밖에서 수행
+
         g_group_anim[grp_idx].wave_count++;
-        if (g_group_anim[grp_idx].wave_count >= delay_ticks) {
-            g_group_anim[grp_idx].wave_count = 0; // 카운터 초기화
-            g_group_anim[grp_idx].wave_idx++;     // 다음 장치 가리킴
-            // 마지막 장치까지 다다르면
+        if (g_group_anim[grp_idx].wave_count >= delay_ticks) {  // 틱이 돌면 위상을 조절해서 딜레이 표현
+            g_group_anim[grp_idx].wave_count = 0;
+            g_group_anim[grp_idx].wave_idx++;
             if (g_group_anim[grp_idx].wave_idx >= g_group_dev_cnt[grp_idx]) {
-                g_group_anim[grp_idx].wave_idx = 0; // 인덱스 초기화
-                // 위상 반전 (켜기 모드 <-> 끄기 모드)
+                g_group_anim[grp_idx].wave_idx = 0;
                 g_group_anim[grp_idx].wave_phase = !g_group_anim[grp_idx].wave_phase;
             }
         }
@@ -363,33 +359,26 @@ void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) {
         // 메시지가 1번이 아니면 상태 초기화 (다시 1번이 들어오면 처음부터 켜지도록)
         g_group_anim[grp_idx].wave_count = 0;
         g_group_anim[grp_idx].wave_idx = 0;
-        g_group_anim[grp_idx].wave_phase = true; // 켜는 단계부터 시작
+        g_group_anim[grp_idx].wave_phase = true; // 켜는 단계부터
     }
-    // ---------------------------------------------------------
-    // 2. 상충경고 (Msg ID: 2) - 전체 동시 점멸
-    // ---------------------------------------------------------
     if (msg_id == 2) {
-        // 깜빡임 주기 계산
+        // todo. 주기 계산 함수는 현장 테스트로 조절하기
         int pet_ticks = (pet_gap <= 0) ? 1 : pet_gap;
         if (pet_ticks < 1) pet_ticks = 1;
         if (pet_ticks > 10) pet_ticks = 10;
 
-        // [애니메이션 상태 업데이트] - 반복문 밖에서 수행
         g_group_anim[grp_idx].blink_count++;
         if (g_group_anim[grp_idx].blink_count >= pet_ticks) {
             g_group_anim[grp_idx].blink_count = 0;
-            // 위상 반전 (전체 ON <-> 전체 OFF)
             g_group_anim[grp_idx].blink_phase = !g_group_anim[grp_idx].blink_phase;
         }
     } else {
-        // 메시지가 2번이 아니면 상태 초기화
+        // 메시지가 2번이 아니면 초기화
         g_group_anim[grp_idx].blink_count = 0;
-        g_group_anim[grp_idx].blink_phase = true; // true: 켜짐부터 시작
+        g_group_anim[grp_idx].blink_phase = true;
     }
-    // ---------------------------------------------------------
-    // 3. 장치별 패킷 전송 로직 (현재 계산된 상태 적용)
-    // ---------------------------------------------------------
-    for (int i = 0; i < g_group_dev_cnt[grp_idx]; i++) {
+
+    for (int i = 0; i < g_group_dev_cnt[grp_idx]; i++) {    // 각 장치별 순회하며 메시지 전송
         M30_CONTEXT *ctx = g_group_map[grp_idx][i];
         if (!ctx) continue;
 
@@ -397,27 +386,22 @@ void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) {
         bool turn_on = false;
 
         if (msg_id == 0) {
-            turn_on = false; // 0번 메시지는 전체 소등
+            turn_on = false; // 전체 소등
         }
-        else if (msg_id == 1) {
-            // 순차 점등/소등 로직
-            if (g_group_anim[grp_idx].wave_phase == true) {
-                // [켜는 단계]: 인덱스가 도달한 곳까지 켜짐 (진행 경로 표시)
-                if (i <= g_group_anim[grp_idx].wave_idx) turn_on = true;
+        else if (msg_id == 1) { // 단독주행: 순차 점등/소등
+            if (g_group_anim[grp_idx].wave_phase == true) { // 켜는 단계면
+                if (i <= g_group_anim[grp_idx].wave_idx) turn_on = true;    // 켜야할 인덱스까지 on (중복 전송 방지 있으니까 상관없음)
                 else turn_on = false;
-            } else {
-                // [끄는 단계]: 인덱스가 지나간 곳은 꺼짐 (순서대로 꺼짐)
-                // 예: wave_idx가 0이면 0번 장치는 꺼지고, 1~N은 아직 켜져 있음
-                if (i > g_group_anim[grp_idx].wave_idx) turn_on = true;
+            } else {    // 끄는 단계면
+                if (i > g_group_anim[grp_idx].wave_idx) turn_on = true; // 꺼야할 인덱스까지 off
                 else turn_on = false;
             }
         }
-        else if (msg_id == 2) {
-            // 전체 동시 점멸 로직
+        else if (msg_id == 2) { // 상충 경고: 전체 점멸
             turn_on = g_group_anim[grp_idx].blink_phase;
         }
-        // 패킷 생성 및 전송 (중복 전송 방지는 send 함수 내부에서 처리됨)
-        if (turn_on) {
+
+        if (turn_on) {  // 최종 전송
             if (msg_id == 1) {
                 snprintf(command_str, sizeof(command_str), "RST=1 USM=001");
             } else {

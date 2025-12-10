@@ -35,21 +35,35 @@ volatile BOOL bConnected = false;
 static uint8_t g_recv_buffer[MAX_RECV_BUFFER_SIZE];
 static size_t g_buffer_len = 0;
 
-// dimmer 그룹 설정
-int g_dimmer_n[] = { 1, 2, 3, 4, 5 };       // 북->동
-int g_dimmer_e[] = { 6, 7, 8, 9, 10 };      // 동->남
-int g_dimmer_s[] = { 11, 12, 13, 14, 15 };  // 남->서
-int g_dimmer_w[] = { 16, 17, 18, 19, 20 };  // 서->북
-const int count_n_group = (sizeof(g_dimmer_n)/sizeof(int));  // 그룹 개수
+// 그룹 별 dimmer ID 설정 (원형교차로 주행 방향 순서대로 정렬)
+int g_dimmer_n[] = { 1, 2, 3, 4, 5 };       // 북->서
+int g_dimmer_w[] = { 6, 7, 8, 9, 10 };      // 서->남
+int g_dimmer_s[] = { 11, 12, 13, 14, 15 };  // 남->동
+int g_dimmer_e[] = { 16, 17, 18, 19, 20 };  // 동->북
+const int count_n_group = (sizeof(g_dimmer_n)/sizeof(int));
 const int count_e_group = (sizeof(g_dimmer_e)/sizeof(int));
 const int count_s_group = (sizeof(g_dimmer_s)/sizeof(int));
 const int count_w_group = (sizeof(g_dimmer_w)/sizeof(int));
+int* g_dimmer_groups[4] = { g_dimmer_n, g_dimmer_w, g_dimmer_s, g_dimmer_e };   // 그룹 별 Dimmer ID 배열 // todo. 포인터 말고 다른 방법 없나
+const int g_all_dimmer_cnt = count_n_group + count_e_group + count_s_group + count_w_group; // 전체 Dimmer 개수
+const int g_dimmer_cnt[4] = { count_n_group, count_w_group, count_s_group, count_e_group };    // 그룹 별 Dimmer 개수
 
 typedef struct {
-    char last_msg[128];
-    int last_pet_gap;
-} GROUP_STATE;
-GROUP_STATE g_state[4]; // n, e, s, w
+    int rgb[3];  // r, g, b (clean 실행 시 전부 -1로 두기)
+} DIMMER_STATE;
+DIMMER_STATE g_dimmer_states[g_all_dimmer_cnt]; // 각 Dimmer별로 마지막에 뿌린 컬러 확인
+
+typedef struct {
+    // 단독주행 관련
+    int wave_count;
+    int wave_idx;
+    bool wave_phase;
+
+    // 상충 관련
+    int blink_count;
+    bool blink_phase;
+} ANIME_STATUS;
+ANIME_STATUS g_led_anim;
 
 //========================= 소소한 헬퍼 함수 =========================
 
@@ -125,23 +139,40 @@ int make_led_packet(uint8_t *buf, const char *data_str) { // 패킷 헤더랑 \r
     buf[idx++] = 0x0A; // \n
     return idx; // 총 길이
 }
-void send_led_packet(GROUP_STATE state, const char* data_content) {    // 경관조명에 패킷 전송
+void send_led_packet(const char* data_content) {    // 경관조명에 패킷 전송
     if (!connection_status_ptr->led_conn || HandleIndex == -1) { return; }
-    if (strcmp(state.last_msg, data_content) == 0) {    // 변경된 내용이 없으면 안보냄
-        // logger_log(LOG_LEVEL_DEBUG, "skipping msg %s[%s]-> msg: %s = %s", ctx->name, ctx->ip, ctx->last_sent_packet_data, data_content);
-        return;
-    }
-    uint8_t packet[1024];
+
+    uint8_t packet[64];
     int len = make_led_packet(packet, data_content);
+
     if (SendBuf(HandleIndex, (char*)packet, len)) {
-        logger_log(LOG_LEVEL_DEBUG, "Sent %s", data_content);
-        strncpy(state.last_msg, data_content, sizeof(state.last_msg));
+        // logger_log(LOG_LEVEL_DEBUG, "Sent: %s", data_content);
     } else {
-        logger_log(LOG_LEVEL_WARN, "Send Fail %s", data_content);
+        logger_log(LOG_LEVEL_WARN, "Send Fail: %s", data_content);
         CommClose(HandleIndex); // 전송 실패 시 연결 끊음
         HandleIndex = -1;
         connection_status_ptr->led_conn = false;
     }
+}
+void send_idxset(int dimmer_id, int r, int g, int b) {  // $IDXSET 명령 전송 (중복이면 전송안함)
+    if ((g_dimmer_states[dimmer_id].rgb[0] == r) && (g_dimmer_states[dimmer_id].rgb[1] == g) && (g_dimmer_states[dimmer_id].rgb[2] == b)) { return; }
+    char cmd[32];
+    snprintf(cmd, sizeof(cmd), "IDXSET:%03d%03d%03d%03d", dimmer_id, r, g, b);
+    send_led_packet(cmd);
+    g_dimmer_states[dimmer_id].rgb[0] = r;
+    g_dimmer_states[dimmer_id].rgb[1] = g;
+    g_dimmer_states[dimmer_id].rgb[2] = b;
+}
+void send_led_seen(int seen_no) {   // $SEEN 명령 전송
+    char cmd[16];
+    snprintf(cmd, sizeof(cmd), "SEEN:%02d", seen_no);
+    send_led_packet(cmd);
+}
+void send_led_clean() {   // $CLEAN 명령 전송
+    char cmd[16];
+    snprintf(cmd, sizeof(cmd), "CLEAN");
+    send_led_packet(cmd);
+    memset(g_dimmer_states, -1, sizeof(g_dimmer_states));   // clean 시켰으면 전체 Dimmer의 states를 -1로 재설정하기
 }
 // ============================ 메시지 큐 처리 ============================
 // 다른 프로세스(IG_Server 등)에서 보낸 명령 처리
@@ -204,20 +235,30 @@ void *do_thread(void *data) {
         }
     }
 }
-// ============================ 기능 구현 함수들 ============================
-// todo. LED 전체 기본 표출 씬 패킷 전송 ($SEEN:09)
-// todo. dimmer 인덱스를 4개로 나누기 (교차로 진입/진출 도로 사이)
-// todo. vms_command_ptr 내부 값을 확인하고, $IDXSET을 순회하며 차량들의 주행 경로를 제외한 LED들의 표출을 검은색으로 설정하는 함수
-// todo. vms_command_ptr 내부 값을 확인하고, 상충이 예상되는 지점에 IDXSET으로 붉은색->검은색 점멸 표출 함수 (PET 값이 작으면 작을수록 빠르게 점멸)
-// todo. 응답이 없으면 connection_status_ptr 연결상태에 기록하고, 재연결 시도
-/*
-패킷: $IDXSET:XXXXXXXXXXXX [XXX(dimmer ID: 001~999), XXX(RED: 0~255), XXX(GREEN: 0~255), XXX(BLUE: 0~255)]
-    -> ACK: $OK19
-    -> 선택되지 않은 Dimmer는 마지막으로 설정된 출력(IDXSET, SEEN, OVSTAEND) 유지
-패킷: $CLEAN [전체 Dimmer 에 대하여, IDXSET으로 설정된 출력 설정 초기화]
-    -> ACK: $OK19
-    -> IDXSET 이전에 설정된 출력(SEEN, OVSTAEND) 유지
-*/
+// ============================ 기능 구현 함수 ============================
+void process_led_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) { // 차량 주행/상충 표출
+    if ((!connection_status_ptr->led_conn) || (!connection_status_ptr->ig_server_conn)) return;
+    /*
+        todo.
+        - 공유메모리 내 메시지 인덱스가 전부 0일 시, SEEN:09 표출 유지 (CLEAN)
+        - 객체가 있을 시(msg: 1 or 2), HO 진입/진출 방향을 잘 계산해서 차량이 지나가지 않는 그룹들을 계산, 지나가지 않는 그룹들에는 idxset으로 검정색 설정
+            - 검정이 아닌 모든 그룹에는 speed 값에 따라 틱을 설정하고, 주행 방향대로 idxset으로 파란색 순차적 점등/소등
+        - 상충 경고가 필요한 구간에는 idxset으로 파란색 대신 pet_gap 값에 따라 붉은색 점멸
+    */
+   for (int i = 0; i < g_all_dimmer_cnt; i++) { // 원형교차로 주행 방향대로, 전체 Dimmer를 순회하며 표출 설정하기
+        // todo. 이거 로직 어떻게짜야되냐
+   }
+}
+
+void process_background_scene() {   // SEEN 명령 주기적으로 전송해주기
+    static time_t last_seen_time = 0;
+    if (!connection_status_ptr->led_conn) { return; }
+    if (nowtime - last_seen_time >= 5) {    // 5초마다 보내주기
+        send_led_seen(9); // Scene 09
+        last_seen_time = nowtime;
+        // logger_log(LOG_LEVEL_DEBUG, "Sent Background Scene 09");
+    }
+}
 // ============================ MAIN ============================
 int main() {
     if (logger_init("Logs/LED_Manager_Log", 100) != 0) { // 테스트용 100mb
@@ -240,12 +281,12 @@ int main() {
     proc_shm_ptr->pid[LED_MANAGER_PID] = getpid();
     proc_shm_ptr->status[LED_MANAGER_PID] = 'S';
 
-    // 스레드 생성
-    pthread_t p_thread;
-    if (pthread_create(&p_thread, NULL, do_thread, NULL) != 0) {
-        logger_log(LOG_LEVEL_ERROR, "Thread creation failed");
-        exit(EXIT_FAILURE);
-    }
+    // 스레드 생성 (필요하면 쓰기)
+    // pthread_t p_thread;
+    // if (pthread_create(&p_thread, NULL, do_thread, NULL) != 0) {
+    //     logger_log(LOG_LEVEL_ERROR, "Thread creation failed");
+    //     exit(EXIT_FAILURE);
+    // }
 
     nowtime = time(NULL);
 
@@ -266,7 +307,9 @@ int main() {
                 last_retry = current_time;
             }
 		} else {
-			packet_frame();
+			packet_frame();             // 수신 처리
+            process_all_led_groups();   // 표출 로직 (개별 제어)
+            process_background_scene(); // 배경 씬 (주기적 전송)
 		}
 	}
 
