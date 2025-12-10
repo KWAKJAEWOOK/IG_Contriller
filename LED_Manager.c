@@ -239,15 +239,12 @@ void *do_thread(void *data) {
 void process_led_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) { // 차량 주행/상충 표출
     if ((!connection_status_ptr->led_conn) || (!connection_status_ptr->ig_server_conn)) return;
     /*
-        todo.
-        - 공유메모리 내 메시지 인덱스가 전부 0일 시, SEEN:09 표출 유지 (CLEAN)
-        - 객체가 있을 시(msg: 1 or 2), HO 진입/진출 방향을 잘 계산해서 차량이 지나가지 않는 그룹들을 계산, 지나가지 않는 그룹들에는 idxset으로 검정색 설정
-            - 검정이 아닌 모든 그룹에는 speed 값에 따라 틱을 설정하고, 주행 방향대로 idxset으로 파란색 순차적 점등/소등
-        - 상충 경고가 필요한 구간에는 idxset으로 파란색 대신 pet_gap 값에 따라 붉은색 점멸
+        todo. vms_command_ptr에 있는 내용들로 LED 표출 설정
+        - 1차: 상충 위험이 예상되는 지점의 Dimmer에 붉은색 점멸 (send_idxset red <-> black)
+        - 2차: 상충 위험이 예상되는 지점 제외, 한 프레임에서 HO들의 주행 예상 경로 표현
+        - 3차: 객체가 없으면 전체 Dimmer CLEAN
     */
-   for (int i = 0; i < g_all_dimmer_cnt; i++) { // 원형교차로 주행 방향대로, 전체 Dimmer를 순회하며 표출 설정하기
-        // todo. 이거 로직 어떻게짜야되냐
-   }
+   
 }
 
 void process_background_scene() {   // SEEN 명령 주기적으로 전송해주기
