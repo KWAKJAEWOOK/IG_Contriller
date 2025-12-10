@@ -314,7 +314,7 @@ void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) {  // 
             if (i == g_group_dev_cnt[grp_idx]-1) { // 이 그룹을 다 돌았으면 wave_count 올리기
                 g_group_anim[grp_idx].blink_count = (g_group_anim[grp_idx].blink_count+1) % pet_ticks;
             }
-            if (g_group_anim[grp_idx].wave_count == 0) {    // 틱이 차면 전체 장치에 표출 설정
+            if (g_group_anim[grp_idx].blink_count == 0) {    // 틱이 차면 전체 장치에 표출 설정
                 turn_on = g_group_anim[grp_idx].blink_phase;
             }
         } else {    // 상충이 아니면 초기화
