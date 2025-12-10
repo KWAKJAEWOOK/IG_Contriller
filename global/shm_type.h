@@ -55,7 +55,7 @@ typedef struct {
 	M30, LED 제어를 위한 상태를 담는 구조체
 	M30_Manager, LED_Manager에선 이것을 참고하여 표출 패킷을 뿌림 (현재 표출 내용과 변경이 있는 장치에만)
 */
-typedef struct {
+typedef struct {	// M30이나 LED에 내릴 표출 명령
     int MsgCount;	// 디버깅용, 원본 데이터의 MsgCount
 	char Timestamp[32];
 
@@ -76,6 +76,9 @@ typedef struct {
 	int w_out_msg[3];
 
 	float brightness;	// 조도센서에서 가져온 밝기값
+
+	int ho_count;		// 경로 표출해줘야되는 HO 개수 (4차로니까 최대 4개)
+	int led_msg[4][2];	// [HO별로][진입방향, 진출방향]
 } VMS_COMMAND_DATA;
 
 typedef struct {	// 소켓 통신 상태정보. true면 연결중, false면 연결 끊김

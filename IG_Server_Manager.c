@@ -348,10 +348,14 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
     memset(vms_command_ptr->w_in_msg, 0, sizeof(vms_command_ptr->w_in_msg));
     memset(vms_command_ptr->w_load_msg, 0, sizeof(vms_command_ptr->w_load_msg));
     memset(vms_command_ptr->w_out_msg, 0, sizeof(vms_command_ptr->w_out_msg));
+	memset(vms_command_ptr->led_msg, 0, sizeof(vms_command_ptr->led_msg));
 
 	// 디버깅용 MsgCount랑 Timestamp 복사
 	strcpy(vms_command_ptr->Timestamp, message_data_ptr->Timestamp);
     vms_command_ptr->MsgCount = message_data_ptr->MsgCount;
+
+	// LED 제어용 HO 개수 업데이트
+	vms_command_ptr->ho_count = message_data_ptr->Num_Of_ApproachTrafficInfo;
 
 	for (int i = 0; i < message_data_ptr->Num_Of_ApproachTrafficInfo; i++) {	// 공유메모리의 message_data_ptr->ApproachTrafficInfo 순회하면서 시나리오랑 매칭
 		int PETGap_i = (int)(message_data_ptr->ApproachTrafficInfo[i].PET_Threshold - message_data_ptr->ApproachTrafficInfo[i].PET);	// RO가 없으면 걍 큰값으로 남겠지머
@@ -373,6 +377,9 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
             speed_i = (int)(message_data_ptr->ApproachTrafficInfo[i].HostObject.WayPoint[0].speed);
         }	// 없으면 0으로 두기
 
+		vms_command_ptr->led_msg[i][0] = ho_entry_i;	// LED 제어를 위한 HO 진입/진출 경로 전달
+		vms_command_ptr->led_msg[i][1] = ho_egress_i;
+
 		Log_data(LOG_TYPE_VMS, "진입/진출 방향 추정 결과\n"
 								"   MsgCount: %d | ApproachTrafficInfo no: %d\n"
 								"   HO 진입: %d\n"
@@ -381,8 +388,7 @@ void calc_vms_command() {	// JSON 파싱 끝나고 VMS 제어용 정보 생성�
 								, vms_command_ptr->MsgCount, i
 								, ho_entry_i, ho_egress_i, ro_entry_i);
 
-		// todo. 시나리오랑 매칭
-		for (int j = 0; j < g_scenario_count; j++) {
+		for (int j = 0; j < g_scenario_count; j++) {	// 시나리오랑 매칭
             SCENARIO_ROW *row_j = &g_scenario_table[j];
             if (row_j->ho_entry == convert_dircode_to_count(ho_entry_i) && 
                 row_j->ho_egress == convert_dircode_to_count(ho_egress_i) && 

@@ -337,7 +337,7 @@ void send_m30_brightness(M30_CONTEXT *ctx, int level) {
 // }
 
 
-void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) {
+void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) { // todo. 제대로 동작하는지 테스트
     if (g_group_dev_cnt[grp_idx] == 0) return; // 그룹이 없으면 리턴
 
     if (msg_id == 1) {

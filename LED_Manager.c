@@ -44,26 +44,25 @@ const int count_n_group = (sizeof(g_dimmer_n)/sizeof(int));
 const int count_e_group = (sizeof(g_dimmer_e)/sizeof(int));
 const int count_s_group = (sizeof(g_dimmer_s)/sizeof(int));
 const int count_w_group = (sizeof(g_dimmer_w)/sizeof(int));
+
 int* g_dimmer_groups[4] = { g_dimmer_n, g_dimmer_w, g_dimmer_s, g_dimmer_e };   // 그룹 별 Dimmer ID 배열 // todo. 포인터 말고 다른 방법 없나
-const int g_all_dimmer_cnt = count_n_group + count_e_group + count_s_group + count_w_group; // 전체 Dimmer 개수
+// const int g_all_dimmer_cnt = count_n_group + count_e_group + count_s_group + count_w_group; // 전체 Dimmer 개수
 const int g_dimmer_cnt[4] = { count_n_group, count_w_group, count_s_group, count_e_group };    // 그룹 별 Dimmer 개수
 
-typedef struct {
-    int rgb[3];  // r, g, b (clean 실행 시 전부 -1로 두기)
-} DIMMER_STATE;
-DIMMER_STATE g_dimmer_states[g_all_dimmer_cnt]; // 각 Dimmer별로 마지막에 뿌린 컬러 확인
+#define G_ALL_DIMMER_CNT 20 // todo. g_all_dimmer_cnt를 그대로 쓸 수가 없었음. 매 지점별로 설치 개수 넣어줘야되나?
+int g_dimmer_current_msg[G_ALL_DIMMER_CNT][3]; // 현재 dimmer에 들어간 메시지
 
 typedef struct {
-    // 단독주행 관련
+    // 주행 경로 표출 관련
     int wave_count;
     int wave_idx;
-    bool wave_phase;
+    // 페이즈는 g_dimmer_current_msg로 대체
 
     // 상충 관련
     int blink_count;
     bool blink_phase;
 } ANIME_STATUS;
-ANIME_STATUS g_led_anim;
+ANIME_STATUS g_led_anim = {0, 0, 0, true};
 
 //========================= 소소한 헬퍼 함수 =========================
 
@@ -146,7 +145,7 @@ void send_led_packet(const char* data_content) {    // 경관조명에 패킷 �
     int len = make_led_packet(packet, data_content);
 
     if (SendBuf(HandleIndex, (char*)packet, len)) {
-        // logger_log(LOG_LEVEL_DEBUG, "Sent: %s", data_content);
+        logger_log(LOG_LEVEL_DEBUG, "Sent: %s", data_content);
     } else {
         logger_log(LOG_LEVEL_WARN, "Send Fail: %s", data_content);
         CommClose(HandleIndex); // 전송 실패 시 연결 끊음
@@ -154,14 +153,18 @@ void send_led_packet(const char* data_content) {    // 경관조명에 패킷 �
         connection_status_ptr->led_conn = false;
     }
 }
-void send_idxset(int dimmer_id, int r, int g, int b) {  // $IDXSET 명령 전송 (중복이면 전송안함)
-    if ((g_dimmer_states[dimmer_id].rgb[0] == r) && (g_dimmer_states[dimmer_id].rgb[1] == g) && (g_dimmer_states[dimmer_id].rgb[2] == b)) { return; }
+
+void send_idxset(int dimmer_id, int r, int g, int b) {  // $IDXSET 명령 전송
+    int dimmer_idx = dimmer_id - 1;
+    if ((g_dimmer_current_msg[dimmer_idx][0] == r) && (g_dimmer_current_msg[dimmer_idx][1] == g) && (g_dimmer_current_msg[dimmer_idx][2] == b)) { return; }
+
     char cmd[32];
     snprintf(cmd, sizeof(cmd), "IDXSET:%03d%03d%03d%03d", dimmer_id, r, g, b);
     send_led_packet(cmd);
-    g_dimmer_states[dimmer_id].rgb[0] = r;
-    g_dimmer_states[dimmer_id].rgb[1] = g;
-    g_dimmer_states[dimmer_id].rgb[2] = b;
+
+    g_dimmer_current_msg[dimmer_idx][0] = r;
+    g_dimmer_current_msg[dimmer_idx][1] = g;
+    g_dimmer_current_msg[dimmer_idx][2] = b;
 }
 void send_led_seen(int seen_no) {   // $SEEN 명령 전송
     char cmd[16];
@@ -172,7 +175,12 @@ void send_led_clean() {   // $CLEAN 명령 전송
     char cmd[16];
     snprintf(cmd, sizeof(cmd), "CLEAN");
     send_led_packet(cmd);
-    memset(g_dimmer_states, -1, sizeof(g_dimmer_states));   // clean 시켰으면 전체 Dimmer의 states를 -1로 재설정하기
+
+    for (int dimmer_idx = 0; dimmer_idx < G_ALL_DIMMER_CNT; dimmer_idx++) {    // 현재메시지 안겹치게 초기화
+        for (int i = 0; i < 3; i++) {
+            g_dimmer_current_msg[dimmer_idx][i] = -1;
+        }
+    }
 }
 // ============================ 메시지 큐 처리 ============================
 // 다른 프로세스(IG_Server 등)에서 보낸 명령 처리
@@ -236,15 +244,141 @@ void *do_thread(void *data) {
     }
 }
 // ============================ 기능 구현 함수 ============================
-void process_led_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) { // 차량 주행/상충 표출
+void update_animation() {   // 애니메이션을 위한 카운터 업데이트 함수
+    int wave_tick = 1;  // todo. speed 값으로 조절 (대푯값 추출 필요)
+    int blink_tick = 4; // todo. pet_gap 값으로 조절 (대푯값 추출 필요)
+
+    g_led_anim.wave_count++;
+    if (g_led_anim.wave_count >= wave_tick) {
+        g_led_anim.wave_count = 0;
+        g_led_anim.wave_idx++;
+        if (g_led_anim.wave_idx >= G_ALL_DIMMER_CNT) g_led_anim.wave_idx = 0;   // 전체 Dimmer 순회
+    }
+
+    g_led_anim.blink_count++;
+    if (g_led_anim.blink_count >= blink_tick) {
+        g_led_anim.blink_count = 0;
+        g_led_anim.blink_phase = !g_led_anim.blink_phase;
+    }
+}
+
+void process_all_led() { // LED 표출 제어 함수
     if ((!connection_status_ptr->led_conn) || (!connection_status_ptr->ig_server_conn)) return;
-    /*
-        todo. vms_command_ptr에 있는 내용들로 LED 표출 설정
-        - 1차: 상충 위험이 예상되는 지점의 Dimmer에 붉은색 점멸 (send_idxset red <-> black)
-        - 2차: 상충 위험이 예상되는 지점 제외, 한 프레임에서 HO들의 주행 예상 경로 표현
-        - 3차: 객체가 없으면 전체 Dimmer CLEAN
-    */
-   
+
+    update_animation(); // 애니메이션 카운터 업데이트
+
+    bool have_waypoint_grp[4] = { false, false, false, false };    // 경로 표출해야되는 Dimmer 그룹 (초기값은 다 안해줘도 되는걸로)
+    for (int i = 0; i < vms_command_ptr->ho_count; i++) {   // 경로 표출해줘야되는 HO 순회하면서 have_waypoint_grp 업데이트
+
+        if (vms_command_ptr->led_msg[i][0] == system_set_ptr->n_dir_code) { // HO 진입이 북쪽방향이고
+            if (vms_command_ptr->led_msg[i][1] == system_set_ptr->n_dir_code) { // 진출이 북쪽방향이면 원형교차로를 한바퀴 돈다는 소리겠지
+                have_waypoint_grp[0] = true;
+                have_waypoint_grp[1] = true;
+                have_waypoint_grp[2] = true;
+                have_waypoint_grp[3] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->e_dir_code) {  // 진출이 남쪽방향일 때
+                have_waypoint_grp[0] = true;
+                have_waypoint_grp[1] = true;
+                have_waypoint_grp[2] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->s_dir_code) {
+                have_waypoint_grp[0] = true;
+                have_waypoint_grp[1] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->w_dir_code) {
+                have_waypoint_grp[0] = true;
+            } // 다른 경우엔 주행 의도 미공유거나 어쩌구니까 그냥 스킵
+        }
+        
+        else if (vms_command_ptr->led_msg[i][0] == system_set_ptr->e_dir_code) {    // HO 진입이 동쪽이면
+            if (vms_command_ptr->led_msg[i][1] == system_set_ptr->e_dir_code) {
+                have_waypoint_grp[0] = true;
+                have_waypoint_grp[1] = true;
+                have_waypoint_grp[2] = true;
+                have_waypoint_grp[3] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->s_dir_code) {
+                have_waypoint_grp[0] = true;
+                have_waypoint_grp[1] = true;
+                have_waypoint_grp[3] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->w_dir_code) {
+                have_waypoint_grp[0] = true;
+                have_waypoint_grp[3] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->n_dir_code) {
+                have_waypoint_grp[3] = true;
+            }
+        }
+
+        else if (vms_command_ptr->led_msg[i][0] == system_set_ptr->s_dir_code) {    // HO 진입이 남쪽이면
+            if (vms_command_ptr->led_msg[i][1] == system_set_ptr->s_dir_code) {
+                have_waypoint_grp[0] = true;
+                have_waypoint_grp[1] = true;
+                have_waypoint_grp[2] = true;
+                have_waypoint_grp[3] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->w_dir_code) {
+                have_waypoint_grp[0] = true;
+                have_waypoint_grp[2] = true;
+                have_waypoint_grp[3] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->n_dir_code) {
+                have_waypoint_grp[2] = true;
+                have_waypoint_grp[3] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->e_dir_code) {
+                have_waypoint_grp[2] = true;
+            }
+        }
+
+        else if (vms_command_ptr->led_msg[i][0] == system_set_ptr->w_dir_code) {    // HO 진입이 서쪽이면
+            if (vms_command_ptr->led_msg[i][1] == system_set_ptr->w_dir_code) {
+                have_waypoint_grp[0] = true;
+                have_waypoint_grp[1] = true;
+                have_waypoint_grp[2] = true;
+                have_waypoint_grp[3] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->n_dir_code) {
+                have_waypoint_grp[1] = true;
+                have_waypoint_grp[2] = true;
+                have_waypoint_grp[3] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->e_dir_code) {
+                have_waypoint_grp[1] = true;
+                have_waypoint_grp[2] = true;
+            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->s_dir_code) {
+                have_waypoint_grp[1] = true;
+            }
+        }
+    }
+
+    if (have_waypoint_grp[0] || have_waypoint_grp[1] || have_waypoint_grp[2] || have_waypoint_grp[3]) { // 경로가 하나라도 있으면 경로나 상충 표출
+        bool have_conflict_grp[4] = { false, false, false, false }; // 상충 표출해야되는 Dimmer 그룹 (초기값은 다 안해줘도 되는걸로)    // todo. 지금은 HO의 진입 방향을 가지고 표출. 추후 ConflictPos 데이터를 응용할 방법을 찾아보는게 좋을듯
+        if (vms_command_ptr->n_in_msg[0] == 2) have_conflict_grp[0] = true; // 북쪽 상충
+        if (vms_command_ptr->w_in_msg[0] == 2) have_conflict_grp[1] = true; // 서쪽 상충
+        if (vms_command_ptr->s_in_msg[0] == 2) have_conflict_grp[2] = true; // 남쪽 상충
+        if (vms_command_ptr->e_in_msg[0] == 2) have_conflict_grp[3] = true; // 동쪽 상충
+
+        int global_idx = 0; // 지금 Dimmer 인덱스 (ID랑 인덱스 헷갈리지않게 조심해라제발)
+        for (int grp = 0; grp < 4; grp++) { // 그룹 4개 순회
+            for (int i = 0; i < g_dimmer_cnt[grp]; i++) {   // 각 그룹별 Dimmer 순회하기
+                int dimmer_id = g_dimmer_groups[grp][i];
+                if (have_conflict_grp[grp]) {   // 상충 표출해줘야되면
+                    if (g_led_anim.blink_phase) {
+                        send_idxset(dimmer_id, 255, 0, 0); // 빨간색
+                    } else {
+                        send_idxset(dimmer_id, 0, 0, 0);   // 검은색
+                    }
+                }
+
+                else if (have_waypoint_grp[grp]) {  // 주행 경로 표출해줘야되면
+                    if (g_led_anim.wave_idx == global_idx) {    // wave_idx 업데이트는 update_animation이 알아서 해줌
+                        send_idxset(dimmer_id, 0, 0, 255); // 파랑색
+                    } else {
+                        send_idxset(dimmer_id, 0, 0, 0);   // 검은색
+                    }
+                }
+
+                else {  // 나머지는 꺼
+                    send_idxset(dimmer_id, 0, 0, 0);
+                }
+                global_idx++; // 다음 Dimmer로 인덱스 증가 (전체 Dimmer 리스트 중 인덱스)
+            }
+        }
+    } else {    // 경로가 하나도 없으면 클리어시켜서 SEEN 표출
+        send_led_clean();
+    }
 }
 
 void process_background_scene() {   // SEEN 명령 주기적으로 전송해주기
@@ -305,8 +439,8 @@ int main() {
             }
 		} else {
 			packet_frame();             // 수신 처리
-            process_all_led_groups();   // 표출 로직 (개별 제어)
-            process_background_scene(); // 배경 씬 (주기적 전송)
+            process_all_led();   // 표출 로직
+            process_background_scene(); // 배경 씬 설정
 		}
 	}
 
