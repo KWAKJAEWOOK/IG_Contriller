@@ -178,7 +178,7 @@ void send_led_clean() {   // $CLEAN 명령 전송
 
     for (int dimmer_idx = 0; dimmer_idx < G_ALL_DIMMER_CNT; dimmer_idx++) {    // 현재메시지 안겹치게 초기화
         for (int i = 0; i < 3; i++) {
-            g_dimmer_current_msg[dimmer_idx][i] = -1;
+            if (g_dimmer_current_msg[dimmer_idx][i] != -1) { g_dimmer_current_msg[dimmer_idx][i] = -1; }
         }
     }
 }
@@ -267,9 +267,17 @@ void process_all_led() { // LED 표출 제어 함수
 
     update_animation(); // 애니메이션 카운터 업데이트
 
-    bool have_waypoint_grp[4] = { false, false, false, false };    // 경로 표출해야되는 Dimmer 그룹 (초기값은 다 안해줘도 되는걸로)
-    for (int i = 0; i < vms_command_ptr->ho_count; i++) {   // 경로 표출해줘야되는 HO 순회하면서 have_waypoint_grp 업데이트
+    bool have_conflict_grp[4] = { false, false, false, false }; // 상충 표출해야되는 Dimmer 그룹 (초기값은 다 안해줘도 되는걸로)    // todo. 지금은 HO의 진입 방향을 가지고 표출. 추후 ConflictPos 데이터를 응용할 방법을 찾아보는게 좋을듯
+    bool is_conflict_active = false;
+    if (vms_command_ptr->n_in_msg[0] == 2) { have_conflict_grp[0] = true; is_conflict_active = true; } // 북쪽 상충
+    if (vms_command_ptr->w_in_msg[0] == 2) { have_conflict_grp[1] = true; is_conflict_active = true; } // 서쪽 상충
+    if (vms_command_ptr->s_in_msg[0] == 2) { have_conflict_grp[2] = true; is_conflict_active = true; } // 남쪽 상충
+    if (vms_command_ptr->e_in_msg[0] == 2) { have_conflict_grp[3] = true; is_conflict_active = true; } // 동쪽 상충
 
+    bool have_waypoint_grp[4] = { false, false, false, false };    // 경로 표출해야되는 Dimmer 그룹 (초기값은 다 안해줘도 되는걸로)
+    bool is_waypoint_active = false;
+    for (int i = 0; i < vms_command_ptr->ho_count; i++) {   // 경로 표출해줘야되는 HO 순회하면서 have_waypoint_grp 업데이트
+        if ((vms_command_ptr->led_msg[i][0] != 0) && (vms_command_ptr->led_msg[i][1] != 0)) { is_waypoint_active = true; }  // HO의 진입, 진출 방향 코드값이 정상적이면
         if (vms_command_ptr->led_msg[i][0] == system_set_ptr->n_dir_code) { // HO 진입이 북쪽방향이고
             if (vms_command_ptr->led_msg[i][1] == system_set_ptr->n_dir_code) { // 진출이 북쪽방향이면 원형교차로를 한바퀴 돈다는 소리겠지
                 have_waypoint_grp[0] = true;
@@ -287,7 +295,6 @@ void process_all_led() { // LED 표출 제어 함수
                 have_waypoint_grp[0] = true;
             } // 다른 경우엔 주행 의도 미공유거나 어쩌구니까 그냥 스킵
         }
-        
         else if (vms_command_ptr->led_msg[i][0] == system_set_ptr->e_dir_code) {    // HO 진입이 동쪽이면
             if (vms_command_ptr->led_msg[i][1] == system_set_ptr->e_dir_code) {
                 have_waypoint_grp[0] = true;
@@ -305,7 +312,6 @@ void process_all_led() { // LED 표출 제어 함수
                 have_waypoint_grp[3] = true;
             }
         }
-
         else if (vms_command_ptr->led_msg[i][0] == system_set_ptr->s_dir_code) {    // HO 진입이 남쪽이면
             if (vms_command_ptr->led_msg[i][1] == system_set_ptr->s_dir_code) {
                 have_waypoint_grp[0] = true;
@@ -323,7 +329,6 @@ void process_all_led() { // LED 표출 제어 함수
                 have_waypoint_grp[2] = true;
             }
         }
-
         else if (vms_command_ptr->led_msg[i][0] == system_set_ptr->w_dir_code) {    // HO 진입이 서쪽이면
             if (vms_command_ptr->led_msg[i][1] == system_set_ptr->w_dir_code) {
                 have_waypoint_grp[0] = true;
@@ -343,13 +348,7 @@ void process_all_led() { // LED 표출 제어 함수
         }
     }
 
-    if (have_waypoint_grp[0] || have_waypoint_grp[1] || have_waypoint_grp[2] || have_waypoint_grp[3]) { // 경로가 하나라도 있으면 경로나 상충 표출
-        bool have_conflict_grp[4] = { false, false, false, false }; // 상충 표출해야되는 Dimmer 그룹 (초기값은 다 안해줘도 되는걸로)    // todo. 지금은 HO의 진입 방향을 가지고 표출. 추후 ConflictPos 데이터를 응용할 방법을 찾아보는게 좋을듯
-        if (vms_command_ptr->n_in_msg[0] == 2) have_conflict_grp[0] = true; // 북쪽 상충
-        if (vms_command_ptr->w_in_msg[0] == 2) have_conflict_grp[1] = true; // 서쪽 상충
-        if (vms_command_ptr->s_in_msg[0] == 2) have_conflict_grp[2] = true; // 남쪽 상충
-        if (vms_command_ptr->e_in_msg[0] == 2) have_conflict_grp[3] = true; // 동쪽 상충
-
+    if (is_conflict_active || is_waypoint_active) { // 표출할 게 있으면
         int global_idx = 0; // 지금 Dimmer 인덱스 (ID랑 인덱스 헷갈리지않게 조심해라제발)
         for (int grp = 0; grp < 4; grp++) { // 그룹 4개 순회
             for (int i = 0; i < g_dimmer_cnt[grp]; i++) {   // 각 그룹별 Dimmer 순회하기
