@@ -645,7 +645,7 @@ void append_to_global_buffer(uint8_t* new_data, size_t length) {	// 수신한 �
     memcpy(&g_recv_buffer[g_buffer_len], new_data, length);
     g_buffer_len += length;
 }
-void remove_from_global_buffer(size_t remove_len) {	// 글로벌 버퍼에서 데이터 삭제
+void remove_from_global_buffer(size_t remove_len) {	// 글로벌 버퍼에서 데이터 삭제	// todo. memmove로 지우는 방식에 문제가 있을수도 있음. 확인 필요
     if (remove_len == 0) return;
     if (remove_len >= g_buffer_len) {
         g_buffer_len = 0;
@@ -692,7 +692,7 @@ void packet_frame() {
 	int nReadSize = 0;
     BOOL bReturn = false;
 	if (g_buffer_len >= MAX_RECV_BUFFER_SIZE) {
-        logger_log(LOG_LEVEL_ERROR, "Receive buffer overflow. Resetting buffer.");
+        logger_log(LOG_LEVEL_ERROR, "Receive buffer overflow. Resetting buffer.");	// todo. 이거 종종 오버플로우 나던데 확인 필요함
         g_buffer_len = 0;
     }
 	size_t free_space = MAX_RECV_BUFFER_SIZE - g_buffer_len;

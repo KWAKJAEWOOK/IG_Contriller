@@ -64,6 +64,47 @@ typedef struct {
 } ANIME_STATUS;
 ANIME_STATUS g_led_anim = {0, 0, 0, true};
 
+
+// ================= Lookup Table 정의 =================
+// [진입방향][진출방향][LED그룹]
+// 진입/진출 인덱스: 0:북, 1:동, 2:남, 3:서
+// LED 그룹 인덱스: 0:N, 1:W, 2:S, 3:E (g_dimmer_groups 순서)
+// 값: 1(켜짐), 0(꺼짐)
+
+const bool g_route_table[4][4][4] = {
+    {   // HO 북쪽 진입
+        {1, 1, 1, 1}, // HO 북쪽 진출
+        {1, 1, 1, 0}, // HO 동쪽 진출
+        {1, 1, 0, 0}, // HO 남쪽 진출
+        {1, 0, 0, 0}  // HO 서쪽 진출
+    },
+    {   // HO 동쪽 진입
+        {0, 0, 0, 1}, // HO 북쪽 진출
+        {1, 1, 1, 1}, // HO 동쪽 진출
+        {1, 1, 0, 1}, // HO 남쪽 진출
+        {1, 0, 0, 1}  // HO 서쪽 진출
+    },
+    {   // HO 남쪽 진입
+        {0, 0, 1, 1}, // HO 북쪽 진출
+        {0, 0, 1, 0}, // HO 동쪽 진출
+        {1, 1, 1, 1}, // HO 남쪽 진출
+        {1, 0, 1, 1}  // HO 서쪽 진출
+    },
+    {   // HO 서쪽 진입
+        {0, 1, 1, 1}, // HO 북쪽 진출
+        {0, 1, 1, 0}, // HO 동쪽 진출
+        {0, 1, 0, 0}, // HO 남쪽 진출
+        {1, 1, 1, 1}  // HO 서쪽 진출
+    }
+};
+int get_dir_index(int dir_code) {   // 방향 코드를 내부 인덱스로 변환함 (g_route_table 쓰기 편하게)
+    if (dir_code == 0) return -1;
+    if (dir_code == system_set_ptr->n_dir_code) return 0;
+    if (dir_code == system_set_ptr->e_dir_code) return 1;
+    if (dir_code == system_set_ptr->s_dir_code) return 2;
+    if (dir_code == system_set_ptr->w_dir_code) return 3;
+    return -1;
+}
 //========================= 소소한 헬퍼 함수 =========================
 
 void handle_sigint(int sig) {   // Ctrl+C 핸들러
@@ -227,7 +268,6 @@ void *do_thread(void *data) {
 			st_5s_cnt = 0;
 		}
 
-
         // 링버퍼(메시지큐 대용) 확인
         recv_size = 0;
         tmp_msg_check = false;
@@ -276,6 +316,7 @@ void process_all_led() { // LED 표출 제어 함수
 
     bool have_waypoint_grp[4] = { false, false, false, false };    // 경로 표출해야되는 Dimmer 그룹 (초기값은 다 안해줘도 되는걸로)
     bool is_waypoint_active = false;
+    /*
     for (int i = 0; i < vms_command_ptr->ho_count; i++) {   // 경로 표출해줘야되는 HO 순회하면서 have_waypoint_grp 업데이트
         if ((vms_command_ptr->led_msg[i][0] != 0) && (vms_command_ptr->led_msg[i][1] != 0)) { is_waypoint_active = true; }  // HO의 진입, 진출 방향 코드값이 정상적이면
         if (vms_command_ptr->led_msg[i][0] == system_set_ptr->n_dir_code) { // HO 진입이 북쪽방향이고
@@ -344,6 +385,21 @@ void process_all_led() { // LED 표출 제어 함수
                 have_waypoint_grp[2] = true;
             } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->s_dir_code) {
                 have_waypoint_grp[1] = true;
+            }
+        }
+    }
+    */
+    for (int i = 0; i < vms_command_ptr->ho_count; i++) {   // 경로 표출하는 부분 룩업테이블로 수정
+        int entry_code = vms_command_ptr->led_msg[i][0];
+        int exit_code  = vms_command_ptr->led_msg[i][1];
+        int entry_idx = get_dir_index(entry_code);  // 방향 코드를 내부 인덱스(0~3)로 변환
+        int exit_idx  = get_dir_index(exit_code);
+        if (entry_idx != -1 && exit_idx != -1) {    // 유효한 방향이면 테이블 조회
+            is_waypoint_active = true;
+            for (int grp = 0; grp < 4; grp++) {
+                if (g_route_table[entry_idx][exit_idx][grp]) {
+                    have_waypoint_grp[grp] = true;
+                }
             }
         }
     }
