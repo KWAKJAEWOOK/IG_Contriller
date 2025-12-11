@@ -9,12 +9,13 @@ LOG_DIR_CONNMNG  := exe/Logs/Connection_Manager_Log
 LOG_DIR_IGSERVER := exe/Logs/IG_Server_Manager_Log
 LOG_DIR_LEDMNG   := exe/Logs/LED_Manager_Log
 LOG_DIR_M30MNG   := exe/Logs/M30_Manager_Log
+LOG_DIR_WATCHDOG := exe/Logs/Watchdog_Log
 LOG_DIR_RAWDATA  := $(LOG_DIR_IGSERVER)/RawData
 LOG_DIR_SHMDATA  := $(LOG_DIR_IGSERVER)/ShmData
 LOG_DIR_VMSCMD   := $(LOG_DIR_IGSERVER)/VmsCmd
 
 
-LOG_DIRS := $(LOG_DIR_CONNMNG) $(LOG_DIR_IGSERVER) $(LOG_DIR_LEDMNG) $(LOG_DIR_M30MNG) \
+LOG_DIRS := $(LOG_DIR_CONNMNG) $(LOG_DIR_IGSERVER) $(LOG_DIR_LEDMNG) $(LOG_DIR_M30MNG) $(LOG_DIR_WATCHDOG) \
 			$(LOG_DIR_RAWDATA) $(LOG_DIR_SHMDATA) $(LOG_DIR_VMSCMD)
 
 SRC_COMMON := global/shm_func.c \
@@ -30,6 +31,7 @@ SRC_LED        := LED_Manager.c
 SRC_M30        := M30_Manager.c
 SRC_CONN       := Connection_Manager.c
 SRC_BH1750	   := BH1750_Manager.c
+SRC_WATCHDOG   := watchdog.c
 SRC_END        := end.c
 
 OBJ_START      := $(SRC_START:.c=.o)
@@ -38,6 +40,7 @@ OBJ_LED        := $(SRC_LED:.c=.o)
 OBJ_M30		   := $(SRC_M30:.c=.o)
 OBJ_CONN       := $(SRC_CONN:.c=.o)
 OBJ_BH1750	   := $(SRC_BH1750:.c=.o)
+OBJ_WATCHDOG   := $(SRC_WATCHDOG:.c=.o)
 OBJ_END        := $(SRC_END:.c=.o)
 
 TARGETS := start.out \
@@ -46,6 +49,7 @@ TARGETS := start.out \
            M30_Manager.out \
            Connection_Manager.out \
 		   BH1750_Manager.out \
+		   watchdog.out \
            end.out
 
 .PHONY: all postcopy clean clean-logs
@@ -71,6 +75,9 @@ Connection_Manager.out: $(OBJ_CONN) $(OBJ_COMMON)
 	$(CC) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 BH1750_Manager.out: $(OBJ_BH1750) $(OBJ_COMMON)
+	$(CC) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+watchdog.out: $(OBJ_WATCHDOG) $(OBJ_COMMON)
 	$(CC) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 end.out: $(OBJ_END) $(OBJ_COMMON)

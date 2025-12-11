@@ -101,10 +101,13 @@ int main(int argc, char *argv[])
     }
 
     // 3. 이름으로 명시적 종료 (좀비 프로세스나 등록되지 않은 프로세스 정리)
+    kill_by_name("watchdog.out");
+    usleep(100000);
     kill_by_name("IG_Server_Manager.out");
     kill_by_name("LED_Manager.out");
     kill_by_name("M30_Manager.out");
     kill_by_name("Connection_Manager.out");
+    kill_by_name("BH1750_Manager.out");
 
     printf("All processes termination sequence completed.\n");
 

@@ -321,6 +321,9 @@ int main(int argc, char *argv[])
     start_linux_process(exeDir, "LED_Manager.out");
     start_linux_process(exeDir, "M30_Manager.out");
     start_linux_process(exeDir, "Connection_Manager.out");
+    start_linux_process(exeDir, "BH1750_Manager.out");
+    usleep(100000);
+    start_linux_process(exeDir, "watchdog.out");
 
     // 6. 버전 파일 생성 (modifyYYYYMMDD)
     char system_version[64];
