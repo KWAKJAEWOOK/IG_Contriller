@@ -404,22 +404,22 @@ void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) { // t
         if (turn_on) {  // 최종 전송
             if (msg_id == 1) {
                 if (system_set_ptr->use_usi == 1) {
-                    snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,USI=%03d,TXT=", system_set_ptr->spd, system_set_ptr->USI_1));
+                    snprintf(command_str, sizeof(command_str), "RST=1,SPD=%d,USI=%03d,TXT=", system_set_ptr->spd, system_set_ptr->USI_1);
                 } else {
-                    snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,TXT=%s", system_set_ptr->spd, system_set_ptr->txt_1));
+                    snprintf(command_str, sizeof(command_str), "RST=1,SPD=%d,TXT=%s", system_set_ptr->spd, system_set_ptr->txt_1);
                 }
             } else {
                 if (system_set_ptr->use_usi == 1) {
-                    snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,USI=%03d,TXT=", system_set_ptr->spd, system_set_ptr->USI_2));
+                    snprintf(command_str, sizeof(command_str), "RST=1,SPD=%d,USI=%03d,TXT=", system_set_ptr->spd, system_set_ptr->USI_2);
                 } else {
-                    snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,TXT=%s", system_set_ptr->spd, system_set_ptr->txt_2));
+                    snprintf(command_str, sizeof(command_str), "RST=1,SPD=%d,TXT=%s", system_set_ptr->spd, system_set_ptr->txt_2);
                 }
             }
         } else {
             if (system_set_ptr->use_usi == 1) {
-                snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,USI=%03d,TXT=", system_set_ptr->spd, system_set_ptr->USI_0));
+                snprintf(command_str, sizeof(command_str), "RST=1,SPD=%d,USI=%03d,TXT=", system_set_ptr->spd, system_set_ptr->USI_0);
             } else {
-                snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,TXT=%s", system_set_ptr->spd, system_set_ptr->txt_0));
+                snprintf(command_str, sizeof(command_str), "RST=1,SPD=%d,TXT=%s", system_set_ptr->spd, system_set_ptr->txt_0);
             }
         }
         send_m30_data_packet(ctx, command_str);

@@ -38,6 +38,16 @@ void Generate_Group_IP(char (*ip_list)[32], int count) {	// 기준 IP(0번 인�
     }
 }
 
+char* trim(char* str) {
+    char* end;
+    while(isspace((unsigned char)*str)) str++;
+    if(*str == 0) return str;
+    end = str + strlen(str) - 1;
+    while(end > str && isspace((unsigned char)*end)) end--;
+    *(end+1) = 0;
+    return str;
+}
+
 int Load_System_Set()
 {
     FILE *init_file;
@@ -73,11 +83,37 @@ int Load_System_Set()
     }
 
     while (fgets(ini_buffer, sizeof(ini_buffer), init_file) != NULL) {
-        memset(para_name, 0, sizeof(para_name));
-        memset(value, 0, sizeof(value));
+        char *line = trim(ini_buffer);
+        
+        // 주석(#)이나 빈 줄 건너뛰기
+        if (line[0] == '#' || strlen(line) == 0) continue;
 
-        // 파싱 (공백 기준 분리)
-        if (sscanf(ini_buffer, "%s %s", para_name, value) != 2) continue;
+        // 공백으로 키와 값 분리 (첫 번째 공백 찾기)
+        char *split_pos = strchr(line, ' ');
+        if (split_pos == NULL) split_pos = strchr(line, '\t'); // 탭으로 구분된 경우 대비
+
+        char para_name[64] = {0};
+        char value[128] = {0}; // 값 버퍼 크기 증가
+
+        if (split_pos != NULL) {
+            *split_pos = '\0'; // 공백 위치를 잘라서 문자열 분리
+            strncpy(para_name, line, sizeof(para_name) - 1);
+            
+            // 값 부분의 앞뒤 공백 제거 (중요: " $c00보행 가능 " -> "$c00보행 가능")
+            char *val_start = trim(split_pos + 1);
+            strncpy(value, val_start, sizeof(value) - 1);
+        } else {
+            // 값이 없는 키 (예: M30_N_LOAD_IP)
+            strncpy(para_name, line, sizeof(para_name) - 1);
+            value[0] = '\0'; // 빈 문자열
+        }
+
+    // while (fgets(ini_buffer, sizeof(ini_buffer), init_file) != NULL) {
+    //     memset(para_name, 0, sizeof(para_name));
+    //     memset(value, 0, sizeof(value));
+
+    //     // 파싱 (공백 기준 분리)
+    //     if (sscanf(ini_buffer, "%s %s", para_name, value) != 2) continue;
 
         if (strcmp(para_name, "IG_Server_IP") == 0) {
             strncpy(system_set_ptr->ig_server_ip, value, 32);
@@ -85,13 +121,6 @@ int Load_System_Set()
             system_set_ptr->ig_server_port = atoi(value);
         }
 
-        else if (strcmp(para_name, "LED_IP") == 0) {
-            strncpy(system_set_ptr->led_ip, value, 32);
-        } else if (strcmp(para_name, "LED_PORT") == 0) {
-            system_set_ptr->led_port = atoi(value);
-        }
-
-        /* M30 관련 설정 */
         if (strcmp(para_name, "N_DIRCODE") == 0) {  // 방위에 따른, CVIBDirCode
             system_set_ptr->n_dir_code = atoi(value);
         } else if (strcmp(para_name, "E_DIRCODE") == 0) {
@@ -102,6 +131,13 @@ int Load_System_Set()
             system_set_ptr->w_dir_code = atoi(value);
         }
 
+        else if (strcmp(para_name, "LED_IP") == 0) {
+            strncpy(system_set_ptr->led_ip, value, 32);
+        } else if (strcmp(para_name, "LED_PORT") == 0) {
+            system_set_ptr->led_port = atoi(value);
+        }
+
+        /* M30 관련 설정 */
         else if (strcmp(para_name, "M30_N_IN_IP") == 0) {
 			strncpy(&system_set_ptr->m30_n_in_ip[0], value, 32);
 		} else if (strcmp(para_name, "M30_N_IN_COUNT") == 0) {
@@ -178,28 +214,28 @@ int Load_System_Set()
 			Generate_Group_IP(system_set_ptr->m30_w_out_ip, count);
 		}
         
-        else if (strcmp(para_name, "M30_PORT") == 0) {
+        if (strcmp(para_name, "M30_PORT") == 0) {
             system_set_ptr->m30_port = atoi(value);
         }
 
-        else if (strcmp(para_name, "USE_USI") == 0) {
+        if (strcmp(para_name, "USE_USI") == 0) {
             system_set_ptr->use_usi = atoi(value);
-        } else if (strcmp(para_name, "SPD") == 0) {
-            system_set_ptr->spd = atoi(value);
         } else if (strcmp(para_name, "USI_0") == 0) {
             system_set_ptr->USI_0 = atoi(value);
         } else if (strcmp(para_name, "USI_1") == 0) {
             system_set_ptr->USI_1 = atoi(value);
         } else if (strcmp(para_name, "USI_2") == 0) {
             system_set_ptr->USI_2 = atoi(value);
-        }
-
-        else if (strcmp(para_name, "TXT_0") == 0) {
+        } else if (strcmp(para_name, "TXT_0") == 0) {
 			strncpy(&system_set_ptr->txt_0[0], value, 32);
         } else if (strcmp(para_name, "TXT_1") == 0) {
 			strncpy(&system_set_ptr->txt_1[0], value, 32);
         } else if (strcmp(para_name, "TXT_2") == 0) {
 			strncpy(&system_set_ptr->txt_2[0], value, 32);
+        }
+
+        if (strcmp(para_name, "SPD") == 0) {
+            system_set_ptr->spd = atoi(value);
         }
     }
 
@@ -252,6 +288,10 @@ int main(int argc, char *argv[])
         printf("START] shm_all_open() failed\n");
         exit(-1);
     }
+
+    // 메모리 초기화시키기
+    if (proc_shm_ptr) memset(proc_shm_ptr, 0, sizeof(SHM_PROC_DATA));
+    if (system_set_ptr) memset(system_set_ptr, 0, sizeof(SHM_SYSTEM_SET));
 
     // 2. 메시지 큐 생성 및 연결
     if(msg_all_create() == FALSE) {

@@ -35,7 +35,7 @@ SRC_END        := end.c
 OBJ_START      := $(SRC_START:.c=.o)
 OBJ_IG         := $(SRC_IG:.c=.o)
 OBJ_LED        := $(SRC_LED:.c=.o)
-OBJ_M30        := $(SRC_M30:.c=.o)
+OBJ_M30		   := $(SRC_M30:.c=.o)
 OBJ_CONN       := $(SRC_CONN:.c=.o)
 OBJ_BH1750	   := $(SRC_BH1750:.c=.o)
 OBJ_END        := $(SRC_END:.c=.o)
