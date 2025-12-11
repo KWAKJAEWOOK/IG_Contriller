@@ -56,7 +56,6 @@ typedef struct {
     // 주행 경로 표출 관련
     int wave_count;
     int wave_idx;
-    // 페이즈는 g_dimmer_current_msg로 대체
 
     // 상충 관련
     int blink_count;
@@ -316,79 +315,6 @@ void process_all_led() { // LED 표출 제어 함수
 
     bool have_waypoint_grp[4] = { false, false, false, false };    // 경로 표출해야되는 Dimmer 그룹 (초기값은 다 안해줘도 되는걸로)
     bool is_waypoint_active = false;
-    /*
-    for (int i = 0; i < vms_command_ptr->ho_count; i++) {   // 경로 표출해줘야되는 HO 순회하면서 have_waypoint_grp 업데이트
-        if ((vms_command_ptr->led_msg[i][0] != 0) && (vms_command_ptr->led_msg[i][1] != 0)) { is_waypoint_active = true; }  // HO의 진입, 진출 방향 코드값이 정상적이면
-        if (vms_command_ptr->led_msg[i][0] == system_set_ptr->n_dir_code) { // HO 진입이 북쪽방향이고
-            if (vms_command_ptr->led_msg[i][1] == system_set_ptr->n_dir_code) { // 진출이 북쪽방향이면 원형교차로를 한바퀴 돈다는 소리겠지
-                have_waypoint_grp[0] = true;
-                have_waypoint_grp[1] = true;
-                have_waypoint_grp[2] = true;
-                have_waypoint_grp[3] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->e_dir_code) {  // 진출이 남쪽방향일 때
-                have_waypoint_grp[0] = true;
-                have_waypoint_grp[1] = true;
-                have_waypoint_grp[2] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->s_dir_code) {
-                have_waypoint_grp[0] = true;
-                have_waypoint_grp[1] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->w_dir_code) {
-                have_waypoint_grp[0] = true;
-            } // 다른 경우엔 주행 의도 미공유거나 어쩌구니까 그냥 스킵
-        }
-        else if (vms_command_ptr->led_msg[i][0] == system_set_ptr->e_dir_code) {    // HO 진입이 동쪽이면
-            if (vms_command_ptr->led_msg[i][1] == system_set_ptr->e_dir_code) {
-                have_waypoint_grp[0] = true;
-                have_waypoint_grp[1] = true;
-                have_waypoint_grp[2] = true;
-                have_waypoint_grp[3] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->s_dir_code) {
-                have_waypoint_grp[0] = true;
-                have_waypoint_grp[1] = true;
-                have_waypoint_grp[3] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->w_dir_code) {
-                have_waypoint_grp[0] = true;
-                have_waypoint_grp[3] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->n_dir_code) {
-                have_waypoint_grp[3] = true;
-            }
-        }
-        else if (vms_command_ptr->led_msg[i][0] == system_set_ptr->s_dir_code) {    // HO 진입이 남쪽이면
-            if (vms_command_ptr->led_msg[i][1] == system_set_ptr->s_dir_code) {
-                have_waypoint_grp[0] = true;
-                have_waypoint_grp[1] = true;
-                have_waypoint_grp[2] = true;
-                have_waypoint_grp[3] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->w_dir_code) {
-                have_waypoint_grp[0] = true;
-                have_waypoint_grp[2] = true;
-                have_waypoint_grp[3] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->n_dir_code) {
-                have_waypoint_grp[2] = true;
-                have_waypoint_grp[3] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->e_dir_code) {
-                have_waypoint_grp[2] = true;
-            }
-        }
-        else if (vms_command_ptr->led_msg[i][0] == system_set_ptr->w_dir_code) {    // HO 진입이 서쪽이면
-            if (vms_command_ptr->led_msg[i][1] == system_set_ptr->w_dir_code) {
-                have_waypoint_grp[0] = true;
-                have_waypoint_grp[1] = true;
-                have_waypoint_grp[2] = true;
-                have_waypoint_grp[3] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->n_dir_code) {
-                have_waypoint_grp[1] = true;
-                have_waypoint_grp[2] = true;
-                have_waypoint_grp[3] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->e_dir_code) {
-                have_waypoint_grp[1] = true;
-                have_waypoint_grp[2] = true;
-            } else if (vms_command_ptr->led_msg[i][1] == system_set_ptr->s_dir_code) {
-                have_waypoint_grp[1] = true;
-            }
-        }
-    }
-    */
     for (int i = 0; i < vms_command_ptr->ho_count; i++) {   // 경로 표출하는 부분 룩업테이블로 수정
         int entry_code = vms_command_ptr->led_msg[i][0];
         int exit_code  = vms_command_ptr->led_msg[i][1];
@@ -434,12 +360,27 @@ void process_all_led() { // LED 표출 제어 함수
     } else {    // 경로가 하나도 없으면 클리어시켜서 SEEN 표출
         send_led_clean();
     }
+
+    logger_log(LOG_LEVEL_DEBUG, "LED 표출정보 전송: MsgCount: %d, Timestamp: %s\n"
+                                "   상충 표출 여부: %d\n"
+                                "      북->서 방향 상충 표출 여부: %d\n"
+                                "      서->남 방향 상충 표출 여부: %d\n"
+                                "      남->동 방향 상충 표출 여부: %d\n"
+                                "      동->북 방향 상충 표출 여부: %d\n"
+                                "   경로 표출 여부: %d\n"
+                                "      북->서 방향 경로 표출 여부: %d\n"
+                                "      서->남 방향 경로 표출 여부: %d\n"
+                                "      남->동 방향 경로 표출 여부: %d\n"
+                                "      동->북 방향 경로 표출 여부: %d\n"
+                            , vms_command_ptr->MsgCount, vms_command_ptr->Timestamp
+                            , is_conflict_active, have_conflict_grp[0], have_conflict_grp[1], have_conflict_grp[2], have_conflict_grp[3]
+                            , is_waypoint_active, have_waypoint_grp[0], have_waypoint_grp[1], have_waypoint_grp[2], have_waypoint_grp[3]);
 }
 
 void process_background_scene() {   // SEEN 명령 주기적으로 전송해주기
     static time_t last_seen_time = 0;
     if (!connection_status_ptr->led_conn) { return; }
-    if (nowtime - last_seen_time >= 5) {    // 5초마다 보내주기
+    if (nowtime - last_seen_time >= 10) {    // 10초마다 보내주기
         send_led_seen(9); // Scene 09
         last_seen_time = nowtime;
         // logger_log(LOG_LEVEL_DEBUG, "Sent Background Scene 09");
