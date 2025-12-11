@@ -6,7 +6,6 @@
     - 조도 센서 연동 밝기 제어
 
     todo. IG-Server와 연결 끊기면 0번 인덱스의 메시지로 M30 전체 전송
-    todo. 장치 랜 케이블 연결이 끊기거나 흔들릴 시 재연결하는지 테스트
 */
 
 #include <stdio.h>
@@ -20,6 +19,7 @@
 #include <arpa/inet.h>
 #include <sys/time.h>
 #include <stdarg.h>
+#include <iconv.h>
 
 #include "global/global.h"
 #include "global/shm_type.h"
@@ -94,15 +94,38 @@ uint8_t calc_checksum(uint8_t *packet, int len) {   // Checksum 계산
     return sum;
 }
 
-int make_m30_packet(uint8_t *buf, uint8_t type, const char *data_str) { // 패킷 생성 헬퍼
-    int data_len = strlen(data_str);
+int make_m30_packet(uint8_t *buf, uint8_t type, const char *data_str) { // 패킷 생성 헬퍼. UTF-8 데이터 UTF-16LE로 바꿔주고 헤더랑 테일 붙여줌
+    iconv_t cd = iconv_open("UTF-16LE", "UTF-8");
+    if (cd == (iconv_t)-1) {
+        logger_log(LOG_LEVEL_ERROR, "iconv_open Fail");
+        return 0; // 변환 실패 시 0
+    }
+    size_t in_len = strlen(data_str);
+    char *in_ptr = (char *)data_str;
+    size_t out_buf_size = in_len * 2 + 16;
+    char *converted_data = (char *)malloc(out_buf_size);
+    if (!converted_data) {
+        logger_log(LOG_LEVEL_ERROR, "iconv 변환데이터 버퍼 생성 Fail");
+        iconv_close(cd);
+        return 0;
+    }
+    char *out_ptr = converted_data;
+    size_t out_bytes_left = out_buf_size;
+    if (iconv(cd, &in_ptr, &in_len, &out_ptr, &out_bytes_left) == (size_t)-1) {
+        logger_log(LOG_LEVEL_ERROR, "iconv 변환 Fail");
+        free(converted_data);
+        iconv_close(cd);
+        return 0;
+    }
+    size_t converted_len = out_buf_size - out_bytes_left;
+
     int idx = 0;
     buf[idx++] = 0x02; // STX
     buf[idx++] = type; // Type
-    buf[idx++] = (uint8_t)(data_len & 0xFF); // Length Low
-    buf[idx++] = (uint8_t)((data_len >> 8) & 0xFF); // Length High
-    memcpy(&buf[idx], data_str, data_len); // Data
-    idx += data_len;
+    buf[idx++] = (uint8_t)(converted_len & 0xFF); // Length Low
+    buf[idx++] = (uint8_t)((converted_len >> 8) & 0xFF); // Length High
+    memcpy(&buf[idx], converted_data, converted_len); // Data
+    idx += converted_len;
     buf[idx] = calc_checksum(buf, idx + 1); // 임시 계산 (CS 자리 포함 전까지 더함)
     idx++;
     buf[idx++] = 0x03; // ETX
@@ -220,7 +243,7 @@ void manage_connections() { // 연결 시도 함수
     }
 }
 // ============================ 패킷 전송 ============================
-void send_m30_data_packet(M30_CONTEXT *ctx, const char* data_content) { // todo. 이거 패킷 형식 이상한것같다
+void send_m30_data_packet(M30_CONTEXT *ctx, const char* data_content) {
     if (!ctx->connected || ctx->handle == -1) return;
     if (strcmp(ctx->last_sent_packet_data, data_content) == 0) {    // 변경된 내용이 없으면 안보냄
         // logger_log(LOG_LEVEL_DEBUG, "skipping msg %s[%s]-> msg: %s = %s", ctx->name, ctx->ip, ctx->last_sent_packet_data, data_content);
@@ -337,7 +360,7 @@ void send_m30_brightness(M30_CONTEXT *ctx, int level) {
 // }
 
 
-void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) { // todo. 제대로 동작하는지 테스트
+void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) {
     if (g_group_dev_cnt[grp_idx] == 0) return; // 그룹이 없으면 리턴
 
     if (msg_id == 1) {

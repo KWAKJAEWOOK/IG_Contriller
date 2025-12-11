@@ -4,6 +4,9 @@
     1. 1:1 TCP 소켓 통신, 클라이언트로써 동작
     2. 데이터를 수신하여 파싱/가공, 공유메모리에 업데이트
     3. 서버와 연결 이상 감지 시, 자동 재연결 시도
+
+	todo. 이거 데이터 5초 이상 수신 안 될 때 어떻게 처리할지 고민 좀 해야겠네
+	- 지금은 다시 재연결하고, 데이터가 안들어오면 계속 마지막 메시지프레임으로 뿌림
 */
 
 #include <stdio.h>
@@ -248,7 +251,7 @@ int bearing_to_dircode(double bearing) {	// 방위각을 8방향 CVIBDirCode로 
 	output_type: 추정할 정보 타입(1:HO 진입 방향 추정, 2:HO 진출 방향 추정, 3:RO 진입 방향 추정)
 */
 int estimation_direction_code(uint8_t idx, uint8_t cal_type, uint8_t output_type) {	// Waypoint의 GPS 값을 가지고 객체의 진입/진출 방향을 추정하는 코드 (CVIBDirCode 추가되면 사용 축소 가능)
-	switch (cal_type) {	// todo. type 코드에 따라 각각 다른 로직 적용하기
+	switch (cal_type) {
 		case 1: {	// Waypoint의 초기 2점과, 마지막 2점을 각각 벡터화해서 진입/진출 방향 추정 방식
 			int output = 0;	// 뽑아낼 방향코드
 			if (output_type == 1) {	// HO 진입방향 추정 요청
@@ -261,7 +264,6 @@ int estimation_direction_code(uint8_t idx, uint8_t cal_type, uint8_t output_type
 					double bearing = calculate_bearing(lat1, lon1, lat2, lon2);
 					double entry_bearing = fmod(bearing + 180.0, 360.0);	// 진입 방향은 진행 방향(Bearing)의 반대편 도로니까
 					output = bearing_to_dircode(entry_bearing);
-					// todo. 추정 결과 로깅
 				}
 			}
 			if (output_type == 2) {	// HO 진출방향 추정 요청
@@ -295,7 +297,7 @@ int estimation_direction_code(uint8_t idx, uint8_t cal_type, uint8_t output_type
             break; }
 		case 2: {	// 교차로의 중앙 GPS 값을 기준으로, 첫번째 혹은 마지막 Waypoint 값으로 진입/진출 방향 추정 방식
 			int output = 0;	// 뽑아낼 방향코드
-			// todo. 
+			// todo. type 코드에 따라 각각 다른 로직 적용하기
 			return output;
 			break; }
 		default:
@@ -665,7 +667,6 @@ void process_parsing() {    // 글로벌 버퍼에서 데이터 파싱
             remove_from_global_buffer(1);   // 못찾았으면 1바이트 버리고 다음 루프에서 재검사
             continue;
         } else {    // 헤더 찾음
-			if (connection_status_ptr->ig_server_conn == false) { connection_status_ptr->ig_server_conn = true; }	// 헤더 정상 수신 시 통신상태 정상
             uint32_t msg_len;
             memcpy(&msg_len, &g_recv_buffer[0], sizeof(msg_len));
             if (g_buffer_len < msg_len + 4) {	// 길이만큼 안왔으면 다음 수신 기다리기
