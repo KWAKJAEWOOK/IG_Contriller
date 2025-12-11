@@ -220,7 +220,7 @@ void manage_connections() { // 연결 시도 함수
     }
 }
 // ============================ 패킷 전송 ============================
-void send_m30_data_packet(M30_CONTEXT *ctx, const char* data_content) {
+void send_m30_data_packet(M30_CONTEXT *ctx, const char* data_content) { // todo. 이거 패킷 형식 이상한것같다
     if (!ctx->connected || ctx->handle == -1) return;
     if (strcmp(ctx->last_sent_packet_data, data_content) == 0) {    // 변경된 내용이 없으면 안보냄
         // logger_log(LOG_LEVEL_DEBUG, "skipping msg %s[%s]-> msg: %s = %s", ctx->name, ctx->ip, ctx->last_sent_packet_data, data_content);
@@ -344,7 +344,7 @@ void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) { // t
         // todo. 주기 계산 함수는 현장 테스트로 조절하기
         int spd_val = (speed <= 0) ? 1 : speed;
         int delay_ticks = 11 - spd_val;
-        if (delay_ticks < 1) delay_ticks = 1;
+        if (delay_ticks < 4) delay_ticks = 4;
 
         g_group_anim[grp_idx].wave_count++;
         if (g_group_anim[grp_idx].wave_count >= delay_ticks) {  // 틱이 돌면 위상을 조절해서 딜레이 표현
@@ -364,8 +364,8 @@ void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) { // t
     if (msg_id == 2) {
         // todo. 주기 계산 함수는 현장 테스트로 조절하기
         int pet_ticks = (pet_gap <= 0) ? 1 : pet_gap;
-        if (pet_ticks < 1) pet_ticks = 1;
-        if (pet_ticks > 10) pet_ticks = 10;
+        if (pet_ticks < 4) pet_ticks = 4;   // 최소 200ms
+        if (pet_ticks > 20) pet_ticks = 20; // 최대 1s
 
         g_group_anim[grp_idx].blink_count++;
         if (g_group_anim[grp_idx].blink_count >= pet_ticks) {
@@ -403,12 +403,24 @@ void process_group_logic(int grp_idx, int msg_id, int speed, int pet_gap) { // t
 
         if (turn_on) {  // 최종 전송
             if (msg_id == 1) {
-                snprintf(command_str, sizeof(command_str), "RST=1 USM=001");
+                if (system_set_ptr->use_usi == 1) {
+                    snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,USI=%03d,TXT=", system_set_ptr->spd, system_set_ptr->USI_1));
+                } else {
+                    snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,TXT=%s", system_set_ptr->spd, system_set_ptr->txt_1));
+                }
             } else {
-                snprintf(command_str, sizeof(command_str), "RST=1 USM=002");
+                if (system_set_ptr->use_usi == 1) {
+                    snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,USI=%03d,TXT=", system_set_ptr->spd, system_set_ptr->USI_2));
+                } else {
+                    snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,TXT=%s", system_set_ptr->spd, system_set_ptr->txt_2));
+                }
             }
         } else {
-            snprintf(command_str, sizeof(command_str), "RST=1 USM=000");
+            if (system_set_ptr->use_usi == 1) {
+                snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,USI=%03d,TXT=", system_set_ptr->spd, system_set_ptr->USI_0));
+            } else {
+                snprintf(command_str, sizeof(command_str), ("RST=1,SPD=%d,TXT=%s", system_set_ptr->spd, system_set_ptr->txt_0));
+            }
         }
         send_m30_data_packet(ctx, command_str);
     }
@@ -456,7 +468,7 @@ void process_brightness() {
     int target_level = 1;
 
     // 조도(Lux)에 따른 밝기 레벨 매핑  // todo. 실제 현장에 설치하고 조정해야함
-    if (lux < 0) target_level = 5; // 센서 에러 시 중간값
+    if (lux < 0) target_level = 10; // 센서 에러 시 최댓값
     else if (lux < 100) target_level = 1; // 야간
     else if (lux < 500) target_level = 3;
     else if (lux < 2000) target_level = 6;

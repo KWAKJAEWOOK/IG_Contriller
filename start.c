@@ -181,6 +181,26 @@ int Load_System_Set()
         else if (strcmp(para_name, "M30_PORT") == 0) {
             system_set_ptr->m30_port = atoi(value);
         }
+
+        else if (strcmp(para_name, "USE_USI") == 0) {
+            system_set_ptr->use_usi = atoi(value);
+        } else if (strcmp(para_name, "SPD") == 0) {
+            system_set_ptr->spd = atoi(value);
+        } else if (strcmp(para_name, "USI_0") == 0) {
+            system_set_ptr->USI_0 = atoi(value);
+        } else if (strcmp(para_name, "USI_1") == 0) {
+            system_set_ptr->USI_1 = atoi(value);
+        } else if (strcmp(para_name, "USI_2") == 0) {
+            system_set_ptr->USI_2 = atoi(value);
+        }
+
+        else if (strcmp(para_name, "TXT_0") == 0) {
+			strncpy(&system_set_ptr->txt_0[0], value, 32);
+        } else if (strcmp(para_name, "TXT_1") == 0) {
+			strncpy(&system_set_ptr->txt_1[0], value, 32);
+        } else if (strcmp(para_name, "TXT_2") == 0) {
+			strncpy(&system_set_ptr->txt_2[0], value, 32);
+        }
     }
 
     fclose(init_file);

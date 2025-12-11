@@ -284,7 +284,7 @@ void *do_thread(void *data) {
 }
 // ============================ 기능 구현 함수 ============================
 void update_animation() {   // 애니메이션을 위한 카운터 업데이트 함수
-    int wave_tick = 1;  // todo. speed 값으로 조절 (대푯값 추출 필요)
+    int wave_tick = 4;  // todo. speed 값으로 조절 (대푯값 추출 필요)
     int blink_tick = 4; // todo. pet_gap 값으로 조절 (대푯값 추출 필요)
 
     g_led_anim.wave_count++;
@@ -302,7 +302,7 @@ void update_animation() {   // 애니메이션을 위한 카운터 업데이트 
 }
 
 void process_all_led() { // LED 표출 제어 함수
-    if ((!connection_status_ptr->led_conn) || (!connection_status_ptr->ig_server_conn)) return;
+    if ((!connection_status_ptr->led_conn) || (!connection_status_ptr->ig_server_conn)) return; // todo. IG-Server 연결 끊어져도 계속 표출함. ig_server_conn 업데이트 기준을 헤더 파싱 성공 여부로 수정했으니 다시 확인 필요
 
     update_animation(); // 애니메이션 카운터 업데이트
 
@@ -344,7 +344,7 @@ void process_all_led() { // LED 표출 제어 함수
                 }
 
                 else if (have_waypoint_grp[grp]) {  // 주행 경로 표출해줘야되면
-                    if (g_led_anim.wave_idx == global_idx) {    // wave_idx 업데이트는 update_animation이 알아서 해줌
+                    if ((g_led_anim.wave_idx == global_idx) || (g_led_anim.wave_idx == ((global_idx+1)%G_ALL_DIMMER_CNT)) || (g_led_anim.wave_idx == ((global_idx-1)%G_ALL_DIMMER_CNT))) {    // wave_idx 업데이트는 update_animation이 알아서 해줌   // Dimmer 앞뒤로 3개까지
                         send_idxset(dimmer_id, 0, 0, 255); // 파랑색
                     } else {
                         send_idxset(dimmer_id, 0, 0, 0);   // 검은색
@@ -360,7 +360,6 @@ void process_all_led() { // LED 표출 제어 함수
     } else {    // 경로가 하나도 없으면 클리어시켜서 SEEN 표출
         send_led_clean();
     }
-
     logger_log(LOG_LEVEL_DEBUG, "LED 표출정보 전송: MsgCount: %d, Timestamp: %s\n"
                                 "   상충 표출 여부: %d\n"
                                 "      북->서 방향 상충 표출 여부: %d\n"
@@ -380,7 +379,7 @@ void process_all_led() { // LED 표출 제어 함수
 void process_background_scene() {   // SEEN 명령 주기적으로 전송해주기
     static time_t last_seen_time = 0;
     if (!connection_status_ptr->led_conn) { return; }
-    if (nowtime - last_seen_time >= 10) {    // 10초마다 보내주기
+    if (nowtime - last_seen_time >= 1) {    // 1초마다 보내주기
         send_led_seen(9); // Scene 09
         last_seen_time = nowtime;
         // logger_log(LOG_LEVEL_DEBUG, "Sent Background Scene 09");

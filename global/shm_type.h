@@ -134,6 +134,16 @@ typedef struct _system_set {
 
 	int				m30_port;
 
+	int				use_usi;				// 이미지 표출 설정 (이게 1이면 이미지, 아니면 텍스트로 표출)
+	int				spd;					// 효과속도 (1~9, 낮을수록 빠름)
+	int				USI_0;					// off로 쓸 USI 번호
+	int				USI_1;					// 단독주행으로 쓸 USI 번호
+	int				USI_2;					// 상충 경고로 쓸 USI 번호
+
+	char			txt_0[32];				// 텍스트 표출 시 사용할 텍스트
+	char			txt_1[32];				// 텍스트 표출 시 단독주행으로 사용할 텍스트
+	char			txt_2[32];				// 텍스트 표출 시 상충 경고로 사용할 텍스트
+
 	shm_ringbuf_t 	msg_IG_Server_Q;
 	shm_ringbuf_t 	msg_LED_Q;
 	shm_ringbuf_t 	msg_M30_Q;

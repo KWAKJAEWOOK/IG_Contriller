@@ -88,6 +88,7 @@ int main(void) {
         uint8_t buf[2];
         ssize_t n = read(fd, buf, 2);
         if (n != 2) {
+            vms_command_ptr->brightness = -1;
             perror("read");
         } else {
             uint16_t raw = ((uint16_t)buf[0] << 8) | buf[1];

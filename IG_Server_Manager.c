@@ -665,6 +665,7 @@ void process_parsing() {    // 글로벌 버퍼에서 데이터 파싱
             remove_from_global_buffer(1);   // 못찾았으면 1바이트 버리고 다음 루프에서 재검사
             continue;
         } else {    // 헤더 찾음
+			if (connection_status_ptr->ig_server_conn == false) { connection_status_ptr->ig_server_conn = true; }	// 헤더 정상 수신 시 통신상태 정상
             uint32_t msg_len;
             memcpy(&msg_len, &g_recv_buffer[0], sizeof(msg_len));
             if (g_buffer_len < msg_len + 4) {	// 길이만큼 안왔으면 다음 수신 기다리기
@@ -704,7 +705,6 @@ void packet_frame() {
     }
 
     if (bReturn == TRUE && nReadSize > 0) {
-		if (connection_status_ptr->ig_server_conn == false) { connection_status_ptr->ig_server_conn = true; }	// 데이터 정상 수신 시 통신상태 정상
 		g_buffer_len += nReadSize;
 		last_keep_alive_time = time(NULL);
     } else if (bReturn == FALSE) {
