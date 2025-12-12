@@ -475,7 +475,7 @@ bool host_connect() {   // 클라이언트로써 연결 시도
 	return true;
 }
 //============================ TCP 수신 함수 =============================
-#define MAX_RECV_BUFFER_SIZE (1024 * 16)	// 한번에 최대 16kb
+#define MAX_RECV_BUFFER_SIZE (1024 * 256)	// 한번에 최대 256kb
 static uint8_t g_recv_buffer[MAX_RECV_BUFFER_SIZE * 10];	// 글로벌 버퍼, 대충 MAX_RECV_BUFFER_SIZE의 10배
 static size_t g_buffer_len = 0;
 
@@ -498,6 +498,10 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
         cJSON* json_ApproachTrafficInfo_i = NULL;
 		int traffic_info_index = 0;
         cJSON_ArrayForEach(json_ApproachTrafficInfo_i, json_ApproachTrafficInfoList) {	// 각 ApproachTrafficInfo 순회하기
+			if (traffic_info_index >= 4) {
+				logger_log(LOG_LEVEL_WARN, "ApproachTrafficInfo count exceeded limit (4). Truncating.");
+				break;
+			}
 			cJSON* json_ApproachTrafficInfo = cJSON_GetObjectItem(json_ApproachTrafficInfo_i, "ApproachTrafficInfo");
 			if (cJSON_IsObject(json_ApproachTrafficInfo)) {	// json_ApproachTrafficInfo 내부에 데이터가 비어있지 않으면 파싱하기
 				cJSON* json_conflictPos = cJSON_GetObjectItem(json_ApproachTrafficInfo, "ConflictPos");	// ConflictPos 객체 파싱
@@ -559,6 +563,10 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 						cJSON* json_WayPoint_i = NULL;
 						int wayPoint_index = 0;
 						cJSON_ArrayForEach(json_WayPoint_i, json_HO_WayPointList) {	// 각 WayPoint 순회하기
+							if (wayPoint_index >= 23) { // 최대 개수(23개) 초과 시 루프 중단
+								logger_log(LOG_LEVEL_WARN, "HO WayPoint count exceeded limit (23). Truncating.");
+								break;
+							}
 							const cJSON* json_WayPoint = cJSON_GetObjectItemCaseSensitive(json_WayPoint_i, "WayPoint");
 							if (json_WayPoint){	// "WayPointList":[]처럼 빈 리스트일 수 있으니까
 								const cJSON* json_WayPoint_lat = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "lat");
@@ -607,6 +615,10 @@ static void Analysis_Packet(cJSON* json_root) {	// IG-Server에서 받은 cJSON 
 						cJSON* json_WayPoint_i = NULL;
 						int wayPoint_index = 0;
 						cJSON_ArrayForEach(json_WayPoint_i, json_RO_WayPointList) {	// 각 WayPoint 순회하기
+							if (wayPoint_index >= 23) { // 최대 개수(23개) 초과 시 루프 중단
+								logger_log(LOG_LEVEL_WARN, "RO WayPoint count exceeded limit (23). Truncating.");
+								break;
+							}
 							const cJSON* json_WayPoint = cJSON_GetObjectItemCaseSensitive(json_WayPoint_i, "WayPoint");
 							if (json_WayPoint){	// "WayPointList":[]처럼 빈 리스트일 수 있으니까
 								const cJSON* json_WayPoint_lat = cJSON_GetObjectItemCaseSensitive(json_WayPoint, "lat");
